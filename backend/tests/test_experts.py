@@ -407,3 +407,76 @@ def test_search_again_runs_the_search_before_its_day_is_up_and_the_page_is_told_
                   {"threads": object()}, readers({}), search)
     assert len(calls) == 1, "the same request is answered once"
     assert experts.load(store(experts={"discover_request": "2026-11-14T00:00:00+00:00"}))["discover_request"].startswith("2026-11-14")
+
+
+# --- an expert whose account the community sweep also reads (26 Nov 2026: "why cosmetic science expert still not scrape") ------
+
+COSMETIC = {"enabled": True, "hours": 14 * 24, "per_handle": 5, "categories": [
+    {"id": "cosmetic_science", "name": "Cosmetic Science Expert", "brain": False, "niche": "cosmetic science", "keywords": [],
+     "dismissed": [], "handles": [{"handle": "labmuffinbeautyscience", "platforms": ["instagram"]}]}]}
+
+
+def ig_post(pid, text="Sunscreen filters explained properly", hours=5):
+    return {"id": pid, "username": "labmuffinbeautyscience", "text": text, "permalink": f"https://www.instagram.com/p/{pid}/",
+            "timestamp": (NOW - timedelta(hours=hours)).isoformat(), "counts": {"likes": 400}, "shown": {"likes": "400"}}
+
+
+def community_row(pid, **kw):
+    """What the COMMUNITY sweep wrote for the same post: section instagram, no username, the same unique address."""
+    return {"section": "instagram", "source": "Instagram", "title": "Penapis suria dijelaskan", "url": f"https://www.instagram.com/p/{pid}/",
+            "relevant": True, "dismissed": False, "raw": {"platform": "instagram"}, **kw}
+
+
+def test_a_post_the_community_sweep_already_wrote_is_adopted_by_the_expert_category():
+    s = store()
+    s.tables["semasa_watch"].append(community_row("P1"))
+    table = {("instagram", "labmuffinbeautyscience"): ([ig_post("P1"), ig_post("P2")], "")}
+    rep = run(s, cfg=COSMETIC, table=table)
+    rows = {r["url"].rsplit("/", 2)[-2]: r for r in s.tables["semasa_watch"]}
+    assert set(rows) == {"P1", "P2"} and rep["new"] == 2 and rep["by_category"] == {"cosmetic_science": 2}
+    assert rows["P1"]["section"] == "expert" and rows["P1"]["raw"]["category"] == "cosmetic_science"      # the community row, adopted
+    assert rows["P1"]["source"] == "Instagram · @labmuffinbeautyscience" and rows["P2"]["section"] == "expert"
+    assert len(s.tables["semasa_watch"]) == 2                                                               # one row per address
+    assert run(s, cfg=COSMETIC, table=table)["new"] == 0                                                    # adopted once, then known
+
+
+def test_a_community_row_wan_hid_is_not_taken_back():
+    s = store()
+    s.tables["semasa_watch"].append(community_row("P1", dismissed=True))
+    rep = run(s, cfg=COSMETIC, table={("instagram", "labmuffinbeautyscience"): ([ig_post("P1")], "")})
+    assert rep["new"] == 0 and s.tables["semasa_watch"][0]["section"] == "instagram"
+
+
+def test_a_dry_run_adopts_nothing():
+    s = store()
+    s.tables["semasa_watch"].append(community_row("P1"))
+    run(s, cfg=COSMETIC, table={("instagram", "labmuffinbeautyscience"): ([ig_post("P1")], "")}, dry=True)
+    assert s.tables["semasa_watch"][0]["section"] == "instagram"
+
+
+def test_the_community_sweep_leaves_an_experts_account_to_the_expert_sweep():
+    s = store(experts=COSMETIC)
+    cfg = {"instagram": {"enabled": True, "accounts": ["labmuffinbeautyscience", "moskinlab"], "queries": ["halal"]},
+           "facebook": {"enabled": True, "accounts": ["halalguru"]}}
+    got = intake.without_expert_accounts(s, cfg)
+    assert got["instagram"]["accounts"] == ["moskinlab"] and got["instagram"]["queries"] == ["halal"]
+    assert got["facebook"]["accounts"] == ["halalguru"]                                   # not an expert's Facebook account here
+    assert cfg["instagram"]["accounts"] == ["labmuffinbeautyscience", "moskinlab"]         # the stored config is not changed
+    assert intake.without_expert_accounts(store(experts={**COSMETIC, "categories": []}), cfg) == cfg      # no expert, nothing taken out
+
+
+def test_the_community_part_of_a_sweep_does_not_read_an_account_an_expert_is_registered_for(monkeypatch):
+    from test_intake import Client, Writer, everything_writer
+
+    from semasa import social_web
+    seen = {}
+
+    def fake(platform, cfg, now=None):
+        seen[platform] = list((cfg.get(platform) or {}).get("accounts") or [])
+        return [], ""
+    monkeypatch.setattr(social_web, "fetch", fake)
+    s = store(experts=COSMETIC)
+    intake.run(s, Writer(everything_writer), Client(community_out={"posts": [], "videos": [], "threads": [], "reddit_error": "",
+                                                                   "youtube_error": "", "threads_error": ""}),
+               now=NOW, only=["community"])
+    assert "labmuffinbeautyscience" not in seen["instagram"] and "moskinlab" in seen["instagram"]

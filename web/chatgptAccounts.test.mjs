@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { MAX_ACCOUNTS, accountState, canAdd, ordered, restMinutes, restText, usable } from "./src/lib/chatgptAccounts.js";
+import { MAX_ACCOUNTS, REASONING, accountState, canAdd, ordered, restMinutes, restText, usable, validReasoning } from "./src/lib/chatgptAccounts.js";
 import { deviceView, forTarget } from "./src/lib/chatgptDevice.js";
 
 const T0 = Date.parse("2026-11-24T18:00:00Z");
@@ -66,5 +66,14 @@ const target = /jumpTo\("([a-z-]+)"\)/.exec(tab)?.[1];
 assert.equal(target, "chatgpt-accounts", "the top button jumps to the accounts card");
 assert.equal((card.match(new RegExp(`id="${target}"`, "g")) || []).length, 2, "both the card and its 'run 095 first' stand-in carry that id");
 assert.ok(/data-api-add-chatgpt/.test(tab) && tab.indexOf("data-api-add-chatgpt") > tab.indexOf("data-api-nav"), "the button sits in the jump row at the top");
+
+
+// ---- a reasoning effort for each extra account (supabase/098; Wan, 26 Nov 2026)
+assert.deepEqual(REASONING.map(([k]) => k), ["", "minimal", "low", "medium", "high"], "the efforts the Responses API takes, and none");
+assert.ok(REASONING.every(([, w]) => w.length === 2 && w[0] && w[1]), "each has a Malay and an English word");
+assert.ok(validReasoning("") && validReasoning("high") && validReasoning(undefined) && validReasoning(null));
+assert.ok(!validReasoning("ultra") && !validReasoning("HIGH") && !validReasoning(" low"));
+assert.match(card, /semasa_chatgpt_account_config/, "the card saves an account's model and reasoning through the 098 function");
+assert.match(card, /data-chatgpt-account-config/, "and every account row carries its editor");
 
 console.log("chatgptAccounts: ok");

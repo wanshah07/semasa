@@ -141,6 +141,25 @@ def write(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
 
 # --- the three duties -------------------------------------------------------------------------------------------------
 
+def without_expert_accounts(store: Any, cfg: dict[str, Any]) -> dict[str, Any]:
+    """The community config minus the Facebook and Instagram accounts the EXPERT sweep reads (Expert Content, experts.py). An
+    account read by both opened its page twice a sweep (a second use of the saved login), and the community sweep, which runs
+    first, claimed its posts under the Instagram section, so the expert's category stayed empty (26 Nov 2026). Never raises: no
+    experts row means nothing is taken out."""
+    try:
+        cats = experts.categories(experts.load(store))
+    except Exception as exc:  # noqa: BLE001 - the sweep goes on with every account it was given
+        log.info("expert accounts not read (%s)", str(exc)[:100])
+        return cfg
+    out = dict(cfg)
+    for platform in ("facebook", "instagram"):
+        mine = {experts.account_of(h, platform).lower() for c in cats for h in c["handles"] if platform in h["platforms"]}
+        opts = cfg.get(platform)
+        if mine and isinstance(opts, dict) and opts.get("accounts"):
+            out[platform] = {**opts, "accounts": [a for a in opts["accounts"] if str(a).strip().lstrip("@").lower() not in mine]}
+    return out
+
+
 def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetime, dry: bool) -> dict[str, Any]:
     forced = bool(cfg.get("_forced"))                  # "Sweep now" on the page waives the rest between reads (social_pace.py)
     resting: dict[str, str] = {}                       # platform -> why it was not read this sweep
@@ -177,6 +196,7 @@ def do_community(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: da
                     raw["threads"], raw["threads_error"] = seen, ""
                 elif why and not raw.get("threads_error"):
                     raw["threads_error"] = why
+    cfg = without_expert_accounts(store, cfg)
     for platform in ("facebook", "instagram"):
         # read in a browser (social_web.py); each says so by name when the platform shows a login wall
         if (cfg.get(platform) or {}).get("enabled") is not False:

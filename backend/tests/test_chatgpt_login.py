@@ -98,7 +98,8 @@ def test_claims_expiry_and_account_are_read_off_the_tokens():
 def test_settings_are_none_until_a_login_is_saved():
     assert login(FakeStore()).settings() is None
     assert login(FakeStore(**{cl.TABLE: [{"id": "main", "auth": {"tokens": {"access_token": "x"}}}]})).settings() is None
-    assert login(store(max_images=3, model="gpt-5.1")).settings() == {"enabled": True, "model": "gpt-5.1", "max_images": 3}
+    assert login(store(max_images=3, model="gpt-5.1")).settings() == {"enabled": True, "model": "gpt-5.1", "max_images": 3,
+                                                                      "reasoning": ""}
 
 
 # ---- refresh ---------------------------------------------------------------------------------------------------------------
@@ -622,3 +623,33 @@ def test_when_no_complexity_level_works_the_model_is_treated_as_refused_and_says
     assert e.value.model and "Tried" in str(e.value)
     assert {"low", "high"} <= {lv for lv in http.levels() if lv}, "every other level was asked"
     assert len(http.calls) <= (1 + cl.MODEL_TRIES) * 3 + 3, "a bounded number of rejected requests"
+
+
+# ---- a reasoning effort for an extra account (supabase/098; Wan, 26 Nov 2026) --------------------------------------------------
+
+def sent(http):
+    return [kw["json"].get("reasoning") for _, kw in http.calls]
+
+
+def test_an_account_with_a_reasoning_effort_sends_it_and_one_without_sends_nothing():
+    png = picture()
+    http = Http(Resp(200, lines=done_event(png)), Resp(200, lines=done_event(png)))
+    assert login(store(reasoning="high"), http).draw("a lab", model="gpt-5") == png
+    assert login(store(), http).draw("a lab", model="gpt-5") == png
+    assert sent(http) == [{"effort": "high"}, None]
+
+
+@pytest.mark.parametrize("junk", ["", "ultra", "HIGH ", None])
+def test_only_an_effort_the_api_knows_is_ever_sent(junk):
+    lg = login(store(reasoning=junk))
+    assert lg.effort() == ("high" if junk == "HIGH " else "") and lg.settings()["reasoning"] == lg.effort()
+
+
+def test_a_model_that_refuses_the_reasoning_field_is_asked_again_without_it_and_not_asked_with_it_again():
+    png = picture()
+    http = Http(Resp(400, text='{"detail":"Unsupported parameter: reasoning.effort"}'), Resp(200, lines=done_event(png)),
+                Resp(200, lines=done_event(png)))
+    lg = login(store(reasoning="low"), http)
+    assert lg.draw("a lab", model="gpt-5") == png
+    assert lg.draw("another", model="gpt-5") == png
+    assert sent(http) == [{"effort": "low"}, None, None]

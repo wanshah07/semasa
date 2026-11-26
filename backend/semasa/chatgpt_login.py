@@ -79,6 +79,8 @@ ITEM_FACTS = ("model", "size", "quality", "output_format", "background", "status
 COMPLEXITY_REFUSED = re.compile(r"complexity '([\w-]+)' is not supported", re.I)
 COMPLEXITIES = ("low", "high", "medium")
 
+EFFORTS = ("minimal", "low", "medium", "high")            # the reasoning efforts the Responses API takes
+EFFORT_REFUSED = re.compile(r"reasoning|effort", re.I)    # a 400 that names the field it did not accept
 MODEL_REFUSED = re.compile(r"model_not_found|model is not supported|not supported when using codex|unknown model|"
                            r"does not exist|invalid model", re.I)
 # 18 Nov 2026: the saved model (gpt-6.2-sol) began answering 404 {"detail":"Not Found"} with a login that still refreshed, and
@@ -256,7 +258,14 @@ class Login:
         if not r or not self.connected():
             return None
         return {"enabled": bool(r.get("enabled", True)), "model": str(r.get("model") or DEFAULT_MODEL),
-                "max_images": max(1, min(8, int(r.get("max_images") or 6)))}
+                "max_images": max(1, min(8, int(r.get("max_images") or 6))), "reasoning": self.effort()}
+
+    def effort(self) -> str:
+        """The reasoning effort Wan chose for this login ("" = none: nothing is sent), only one ChatGPT knows. An extra account
+        carries it (supabase/098); the main login has none. A model that refused the field is not asked with it again this run."""
+        r = self.row() or {}
+        v = str(r.get("reasoning") or "").strip().lower()
+        return v if v in EFFORTS and not getattr(self, "_no_effort", False) else ""
 
     def _save(self, patch: dict[str, Any]) -> None:
         try:
@@ -344,6 +353,8 @@ class Login:
                 "tools": [tool], "parallel_tool_calls": False}
         if variant < 2:
             body["tool_choice"] = {"type": "image_generation"}
+        if self.effort():
+            body["reasoning"] = {"effort": self.effort()}
         return body
 
     def _run(self, body_for: Any, read: Any, timeout: int, last_variant: int) -> Any:
@@ -373,6 +384,10 @@ class Login:
             if code == 401 and not renewed:
                 renewed = True
                 self.refresh(force=True)
+                continue
+            if code == 400 and self.effort() and EFFORT_REFUSED.search(text):
+                self._no_effort = True                 # this model does not take a reasoning effort: ask again without it
+                log.warning("ChatGPT %s refused reasoning.effort=%s; asked again without it", self.row_id, self.effort())
                 continue
             if code == 400 and variant < last_variant:
                 variant += 1

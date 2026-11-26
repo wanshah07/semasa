@@ -593,6 +593,24 @@ def heal_chains(store: Any, posts: list[dict[str, Any]], dry: bool) -> list[dict
             for p in posts]
 
 
+def foreign_rows(store: Any, urls: list[str]) -> dict[str, str]:
+    """{address: its section} for the known addresses a section OTHER than the experts' wrote and Wan has not hidden."""
+    out: dict[str, str] = {}
+    for chunk in db._in_filter_chunks(urls):
+        rows = store.table(WATCH).select("url,section,dismissed").in_("url", chunk).execute().data or []
+        out.update({r["url"]: r.get("section") or "" for r in rows if r.get("section") != SECTION and not r.get("dismissed")})
+    return out
+
+
+def adopt(store: Any, rows: list[dict[str, Any]], dry: bool) -> int:
+    """Rewrite the feed rows another section wrote so they belong to the expert (their address stays the key)."""
+    if dry:
+        return len(rows)
+    for r in rows:
+        store.table(WATCH).update({k: v for k, v in r.items() if k != "url"}).eq("url", r["url"]).execute()
+    return len(rows)
+
+
 def sweep(store: Any, llm: Any, cfg: dict[str, Any], own: list[str], now: datetime, dry: bool, have: Callable[..., set[str]],
           write: Callable[..., int], pages: dict[str, Any], readers: dict[str, Any] | None = None,
           search: Callable[..., Any] = threads_web.read_url) -> dict[str, Any]:
@@ -600,11 +618,19 @@ def sweep(store: Any, llm: Any, cfg: dict[str, Any], own: list[str], now: dateti
     posts, stats = collect(pages, cats, cfg, now, readers)
     posts = heal_chains(store, posts, dry)
     known = have(store, [p["permalink"] for p in posts])
+    # A post the COMMUNITY sweep already wrote under its own section is not "known" to the experts: the address is unique across
+    # the feed, so whoever wrote it first owned it, and an expert's account that is also a watched Instagram account never showed
+    # under its category (26 Nov 2026: "why cosmetic science expert still not scrape": @labmuffinbeautyscience read 2 posts, 0
+    # new, 0 shown). Such a row is adopted: its section, summary and category become the expert's. A row Wan hid stays hidden.
+    foreign = foreign_rows(store, sorted(known))
+    known -= set(foreign)
     fresh = [p for p in posts if p["permalink"] not in known or (dry and p.get("healed"))]
     kept, rejected = annotate(llm, fresh)
     filed = file_in_brain(store, kept, dry)
     in_brain = {p["permalink"] for p in [k for k in kept if k.get("brain")][:MAX_BRAIN]} if filed else set()
-    write(store, [to_row(p, p["permalink"] in in_brain) for p in kept] + [tombstone(p) for p in rejected], dry)
+    rows = [to_row(p, p["permalink"] in in_brain) for p in kept] + [tombstone(p) for p in rejected]
+    write(store, [r for r in rows if r["url"] not in foreign], dry)
+    adopt(store, [r for r in rows if r["url"] in foreign], dry)
     found = discover(store, llm, pages.get("threads"), cats, own, now, dry, search, cfg.get("discover_request"))
     return {"handles": sum(len(c["handles"]) for c in cats), "reads": stats["reads"], "read": stats["found"], "new": len(fresh),
             "shown": len(kept), "hidden": len(rejected), "brain": filed, "suggested": found["suggested"],

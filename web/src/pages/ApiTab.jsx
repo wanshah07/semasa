@@ -21,7 +21,6 @@ import GeminiKeys from "../components/GeminiKeys";
 import AiProviders from "../components/AiProviders";
 import ClaudeSetup from "../components/ClaudeSetup";
 import ChatGptLogin from "../components/ChatGptLogin";
-import ThreadsConnect from "../components/ThreadsConnect";
 import { AiSettings, MireldTrial } from "./SettingsTab";
 
 /* API: the AI gateways (rootsys = Afiq's, Mireld), their keys, their models and the tokens we spend (Wan, 9 Oct 2026: "track
@@ -226,7 +225,7 @@ export default function ApiTab({ settings, save, onToast, go }) {
       </section>
 
       <section className="mb-8 scroll-mt-20 space-y-5" id="api-connect" data-ai-settings data-api-section="connect">
-        <SectionHead n={4} title={t("Kunci dan log masuk", "Keys and logins")} hint={t("Tambah atau tukar kunci, log masuk ChatGPT, kunci Gemini, penyedia tambahan dan aplikasi Threads.", "Add or change keys, the ChatGPT login, the Gemini keys, extra providers and the Threads app.")} />
+        <SectionHead n={4} title={t("Kunci dan log masuk", "Keys and logins")} hint={t("Tambah atau tukar kunci, log masuk ChatGPT, kunci Gemini, dan penyedia tambahan.", "Add or change keys, the ChatGPT login, the Gemini keys, and extra providers.")} />
         {/* ChatGPT beside the other robots (Wan, 7 Nov 2026: "for chatgpt put together in API, same with others"); Motion uses it from here */}
         <div data-chatgpt-section><ChatGptLogin onToast={onToast} /></div>
         <div data-gemini-section><GeminiKeys settings={settings} save={save} onToast={onToast} /></div>
@@ -234,8 +233,6 @@ export default function ApiTab({ settings, save, onToast, go }) {
         <AiProviders statusRows={statusT.rows} usageRows={usage.recent} onToast={onToast} />
         {/* moved here from Tetapan (Wan, 7 Nov 2026: "API in setting" goes to its segment): the workers' keys and endpoints, and one Mireld run */}
         <AiSettings onToast={onToast} github={{ scrape: settings?.ai_github_scrape, media: settings?.ai_github_media }} />
-        {/* Wan's own Threads app (supabase/080): the viral-post feed reads Threads through it, Composio's shared app having no search permission */}
-        <div data-threads-section><ThreadsConnect onToast={onToast} /></div>
         <MireldTrial settings={settings || {}} save={save} onToast={onToast} />
       </section>
 

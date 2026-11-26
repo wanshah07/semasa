@@ -66,3 +66,15 @@ export const usable = (rows, now = Date.now()) => ordered(rows).filter((r) => ![
 
 /** Whether one more may be added. */
 export const canAdd = (rows) => ordered(rows).length < MAX_ACCOUNTS;
+
+/* The reasoning effort an extra account's chat model thinks with (supabase/098; Wan, 26 Nov 2026). "" sends nothing: the model decides.
+   The values are the ones the Responses API takes in reasoning.effort. */
+export const REASONING = [
+  ["", ["Ikut model", "Model decides"]],
+  ["minimal", ["Minimum", "Minimal"]],
+  ["low", ["Rendah", "Low"]],
+  ["medium", ["Sederhana", "Medium"]],
+  ["high", ["Tinggi", "High"]],
+];
+
+export const validReasoning = (v) => REASONING.some(([k]) => k === String(v ?? ""));

@@ -421,3 +421,40 @@ def test_a_run_that_dies_says_so_once():
     autofill.run(store, _fs(), NOW)
     lines = [r for r in store.tables["semasa_log"] if r.get("event") == "idea.autofill_error"]
     assert len(lines) == 1 and "the feed table is gone" in lines[0]["title"]
+
+
+# ---- unofficial sources, after every official item (Wan, 26 Nov 2026) -------------------------------------------
+SOCIAL_TITLES = ["Sunscreen cair bila berpeluh betul ke", "Serum vitamin C tak boleh campur retinol",
+                 "Krim pemutih murah di Shopee",
+                 "Pewangi buah-buahan cepat hilang bau"]
+
+
+def _social(i, section, domain="kosmetik"):
+    return {**_w(50 + i, domain, section), "title": SOCIAL_TITLES[i - 1], "url": f"https://{section}.example/{i}",
+            "summary": f"Soalan {i}"}
+
+
+def test_unofficial_rows_fill_after_every_official_item_and_are_flagged_for_the_reviewer():
+    store = _store([_w(1, "kosmetik"), _social(1, "threads"), _social(2, "reddit"), _social(3, "expert")])
+    autofill.run(store, _fs(per_run=3, min_drafts=0, focus=[]), NOW)
+    made = sorted(store.tables["semasa_ideas"], key=lambda i: (i["brief"]["position"]["date"], i["brief"]["position"]["slot"]))
+    assert [m["source_url"] for m in made] == ["https://npra.gov.my/1", "https://threads.example/1", "https://reddit.example/2"]
+    assert "unofficial" not in made[0]["brief"] and made[0]["brief"]["source_priority"] == "official"
+    assert made[1]["brief"]["unofficial"] is True and made[1]["brief"]["relate_regulatory"] is True
+    assert made[1]["brief"]["source_priority"] == "current" and made[1]["status"] == "new"   # still only an idea: Wan approves
+    assert all("expert" not in m["source_url"] for m in made)                                # the AI experts never fill a slot
+
+
+def test_unofficial_can_be_switched_off_and_linkedin_never_takes_it():
+    store = _store([_social(1, "threads"), _social(2, "reddit")])
+    autofill.run(store, _fs(per_run=3, min_drafts=0, focus=[], unofficial=False), NOW)
+    assert store.tables["semasa_ideas"] == []
+    store = _store([_social(1, "threads")])
+    autofill.run(store, _fs(per_run=3, min_drafts=0, focus=[], streams=["linkedin"], days_ahead=3), NOW)
+    assert store.tables["semasa_ideas"] == []
+
+
+def test_an_faq_answer_comes_before_a_social_post():
+    faq = autofill.faq_candidates(_focus_store([], [_faq(1, "kosmetik")]))
+    ranked = autofill.rank_candidates([_social(1, "threads"), *faq])
+    assert [x["section"] for x in ranked] == ["faq", "threads"]

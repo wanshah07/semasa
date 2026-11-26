@@ -37,6 +37,7 @@ from . import (
     glossary,
     hook_bank,
     hook_learning,
+    idea_failures,
     language,
     lenggok,
     modes,
@@ -124,7 +125,7 @@ def faq_source(idea: dict[str, Any]) -> dict[str, Any] | None:
 
 
 STORED_SCHEMES = ("onedrive://", "myra://")
-STORED_HOSTS = ("reddit.com", "youtube.com", "youtu.be", "threads.net", "threads.com")
+STORED_HOSTS = ("reddit.com", "youtube.com", "youtu.be", "threads.net", "threads.com", "facebook.com", "instagram.com")
 
 
 def stored_source(idea: dict[str, Any]) -> dict[str, Any] | None:
@@ -617,6 +618,10 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
     if (idea.get("note") or "").strip():
         lines.append(f"WHAT WAN WANTS FROM THIS: {idea['note'].strip()}")
     flags = idea.get("brief") if isinstance(idea.get("brief"), dict) else {}
+    if flags.get("hook_retry"):
+        lines.append(f"HOOK, ATTEMPT {int(flags['hook_retry']) + 1}: your last answers did not open on one of the numbered "
+                     "hook shapes. Pick ONE numbered shape from the list, copy its wording and change only its blanks, and put "
+                     "its number in \"hook_shape\". Do not invent a new opening.")
     if flags.get("story_mode"):
         lines.append("STORY MODE: tell it as a small true story (who did what, what happened, what was found) in the casual "
                      "voice above, with the fact inside it. The fact is never dropped for the story.")
@@ -636,6 +641,12 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
                      "a licence, an approval, an enforcement notice or a standard. If the story is about a person, an accident, "
                      "an award, a business or an event with no authority's instrument in it, answer "
                      "{\"fit\": false, \"why_not\": \"what is missing\"} and write nothing.")
+    if flags.get("unofficial"):
+        lines.append("UNOFFICIAL SOURCE (Wan, 26 Nov 2026): this is what people are saying in public, not a regulator's "
+                     "word, and Wan reviews it before anything is approved. Never name the platform, a channel or a person, "
+                     "never quote them, and never present a claim from it as fact. Write the question or belief behind it and "
+                     "answer it from an instrument you can name exactly (NPRA, KKM/BKKM, JAKIM, the Annexes). If no instrument "
+                     "you can name answers it, answer {\"fit\": false, \"why_not\": \"what is missing\"} and write nothing.")
     if flags.get("relate_regulatory"):
         lines.append("NEWSPAPER STORY, not a regulator's notice. A rule is NOT required (Wan, 9 Nov 2026): read the story in the "
                      "context of this stream's audience and decide what is useful to them. Where a Malaysian or ASEAN rule "
@@ -1568,6 +1579,7 @@ def run(store: Any, llm: LLM, limit: int | None = None) -> str:
             msg = str(exc) if isinstance(exc, IdeaError) else f"{type(exc).__name__}: {str(exc)[:400]}"
             log.error("idea %s: %s", idea["id"], msg)
             store.table(db.IDEAS).update({"status": "error", "error": msg[:800]}).eq("id", idea["id"]).execute()
+            idea_failures.settle(store, idea, msg)         # a hook that failed is tried again; an autofill idea with no fit goes
     return f"Ideas: {ok}/{len(ideas)} written as drafts"
 
 
@@ -1577,5 +1589,9 @@ def run_all(store: Any, llm: LLM) -> str:
     from . import autofill
     fill = autofill.run(store, load_settings(store)) if llm.configured else "Autofill: waiting for a writer"
     log.info("%s", fill)                                    # the run's log said nothing about autofill before (26 Nov 2026)
+    from . import publisher
+    moved = publisher.promote_sent(store, load_settings(store))
+    if moved:
+        log.info("%d post(s) already sent on every channel moved to posted", moved)
     repair = repair_picture_only(store, llm) if llm.configured else "Poster repair: waiting for a writer"
     return "\n".join([fill, run(store, llm), revise_posts(store, llm), repair])

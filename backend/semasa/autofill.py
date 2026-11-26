@@ -24,7 +24,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from . import buffer_queue, db
+from . import buffer_queue, db, idea_failures
 from .ideas import ANY_DAY_DOMAINS, FAQ_SOURCE, MYT
 from .log import get_logger
 
@@ -56,6 +56,13 @@ FAQS = "semasa_faqs"
 FAQ_DOMAIN = {"halal": "halal_my", "skincare": "kosmetik", "kosmetik": "kosmetik", "makanan": "makanan",
               "farmaseutikal": "farmaseutikal"}               # web/src/lib/brand.js FAQ_CATEGORY_TO_DOMAIN
 FAQ_POOL = 400                  # the newest FAQ rows read a run
+# UNOFFICIAL SOURCES (Wan, 26 Nov 2026: "maybe can include unofficial, my side will review at final before approval"). The feed's
+# community rows (what people are saying on Threads, Facebook, Instagram, YouTube and Reddit) and the newspaper headlines may
+# fill a ws.regulab position AFTER every official item, so the drafts floor never runs dry; nothing is posted without his
+# approval, which is where he reviews them. Experts are left out: their rows carry no domain and the registered category is AI,
+# not this brand's field. LinkedIn keeps its own rule (facts from a guideline or an official site, Wan 20 Nov 2026).
+UNOFFICIAL_SECTIONS = ("threads", "facebook", "instagram", "youtube", "reddit")
+UNOFFICIAL_ROWS = 150
 WATCH_WINDOW = 500              # the newest fresh feed rows read a run (official sections only, unless headlines are on)
 
 
@@ -87,6 +94,7 @@ def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, A
     except (TypeError, ValueError):
         every = FOCUS_EVERY
     return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams, "focus": focus, "focus_every": every,
+            "unofficial": raw.get("unofficial") is not False,      # on unless Wan switches it off (26 Nov 2026)
             "news": raw.get("news") is True,              # the newspaper headline (isu semasa) is OFF unless Wan turns it on
             "min_drafts": floor, "floor_days": reach}
 
@@ -473,7 +481,8 @@ class Focus:
         return cls(cfg.get("focus") or [], int(cfg.get("focus_every") or FOCUS_EVERY), recent)
 
 
-def candidates(store: Any, now: datetime | None = None, news: bool = False, faq: bool = False) -> list[dict[str, Any]]:
+def candidates(store: Any, now: datetime | None = None, news: bool = False, faq: bool = False,
+               unofficial: bool = False) -> list[dict[str, Any]]:
     """Feed items an idea has not used yet. A regulator's notice is fresh for FRESH_DAYS; the OneDrive angle bank is not news and
     has no age limit (its rows are written once, when a file is first read, and wait until they are used). Only OFFICIAL sections
     are read, and the newspaper headlines with them only when `news` is on (settings.autofill.news): facts first."""
@@ -491,10 +500,20 @@ def candidates(store: Any, now: datetime | None = None, news: bool = False, faq:
             .order("created_at", desc=True).limit(300).execute().data or [])
     if not news:
         rows = [r for r in rows if r.get("section") in OFFICIAL_SECTIONS]            # no Reddit, YouTube, Threads or expert post
-    rows = (news_candidates(store, now) if news else []) + rows + bank + (faq_candidates(store) if faq else [])
+    social: list[dict[str, Any]] = []
+    if unofficial and not news:
+        social = (store.table(WATCH).select(SELECT).eq("relevant", True).eq("dismissed", False).gte("created_at", since)
+                  .in_("section", list(UNOFFICIAL_SECTIONS)).order("created_at", desc=True).limit(UNOFFICIAL_ROWS)
+                  .execute().data or [])
+    rows = ((news_candidates(store, now) if (news or unofficial) else []) + rows + bank + (faq_candidates(store) if faq else [])
+            + social)
     # a row with no words to write from is no candidate: the OneDrive angle bank carried spreadsheet cells titled "40" and "0"
     # (25 Nov 2026), and the floor spent two of its first three ideas on them, each one failing "no fit" at the writer
     rows = [r for r in rows if usable_title(r.get("title"))]
+    # a row the writer already refused (no fit, or the same event) was deleted with its idea and is not picked again (26 Nov 2026)
+    skip = idea_failures.skipped(store)
+    if skip:
+        rows = [r for r in rows if r.get("url") not in skip]
     if not rows:
         return []
     urls = [r["url"] for r in rows]
@@ -546,11 +565,11 @@ def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> 
     Newest first inside a tier, without inventing a viral score. An item with no section at all ranks last, announcements
     first among those."""
 
-    def key(item: dict[str, Any]) -> tuple[int, int, float]:
+    def key(item: dict[str, Any]) -> tuple[int, int, int, float]:
         age = age_of(item)
         text = f"{item.get('title') or ''} {item.get('summary') or ''}"
         said = int(not (ANNOUNCEMENT.search(text) or item.get("regulatory_link"))) if tier(item) >= 6 else 0
-        return (tier(item), said, age)
+        return (tier(item), int(item.get("section") in UNOFFICIAL_SECTIONS), said, age)      # an FAQ answer before a social post
     return sorted(pool, key=key)
 
 
@@ -661,6 +680,9 @@ def write_idea(store: Any, brand: dict[str, Any], stream: str, item: dict[str, A
         brief["faq_id"] = (item.get("raw") or {}).get("faq_id")
     if is_announcement(item):
         brief["announcement"] = True
+    if item.get("section") in UNOFFICIAL_SECTIONS:
+        brief["unofficial"] = True             # what people are saying: Wan reviews it at approval (26 Nov 2026)
+        brief["relate_regulatory"] = True
     if news:
         brief["relate_regulatory"] = True      # a newspaper story: a rule where a real one governs it
         brief.pop("watch_id")                 # not a regulator-feed row: trend_id says where it came from
@@ -782,7 +804,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
                         + f" at {queue['limit']}); ideas resume when a post goes out")
         else:
             streams = cfg["streams"]
-        pool = rank_candidates(candidates(store, now, cfg["news"], "faq" in cfg["focus"]), now)
+        pool = rank_candidates(candidates(store, now, cfg["news"], "faq" in cfg["focus"], cfg["unofficial"]), now)
         seen = {"pool": len(pool), "faq": sum(1 for x in pool if x.get("section") == "faq")}
         focus = Focus.load(store, cfg)
         brand = settings.get("brand") or {}

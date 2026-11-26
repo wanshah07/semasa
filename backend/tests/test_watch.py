@@ -472,3 +472,74 @@ def test_a_sweep_under_way_is_not_started_twice(monkeypatch):
 def test_the_writers_no_as_text_hides_the_item():
     assert watch._yes("false") is False and watch._yes("No") is False and watch._yes(False) is False
     assert watch._yes(True) is True and watch._yes("true") is True and watch._yes("yes") is True
+
+
+# --- the state muftis (Wan, 26 Nov 2026: "cari cara untuk dapatkan fatwa sebab ada banyak negeri ada sumber fatwa") --------
+
+MUFTI = ["Mufti Wilayah Persekutuan", "Mufti Perlis", "Mufti Melaka", "Mufti Pahang", "Mufti Selangor"]
+MUFTI_FIX = {"Mufti Wilayah Persekutuan": "mufti_wp.html", "Mufti Perlis": "mufti_perlis.html",
+             "Mufti Melaka": "mufti_melaka.html", "Mufti Pahang": "mufti_pahang.html", "Mufti Selangor": "mufti_selangor.html"}
+
+
+def _mufti(name):
+    src = next(s for s in watch.SOURCES if s.name == name)
+    return src.parse((FIX / MUFTI_FIX[name]).read_text(encoding="utf-8"), src.url, date(2026, 11, 26))
+
+
+def test_every_state_mufti_list_is_read_with_a_date_and_arrives_as_a_fatwa():
+    names = [s.name for s in watch.SOURCES]
+    assert all(m in names for m in MUFTI) and len({s.url for s in watch.SOURCES}) == len(watch.SOURCES)
+    for name in MUFTI:
+        got = _mufti(name)
+        assert got, name
+        assert all(g["domain"] == "fatwa" and g["published_at"] and g["kind"] for g in got), name
+        assert all(g["url"].startswith("https://") for g in got), name
+        assert all(len(g["title"]) >= 15 and not g["title"].lower().startswith("skip") for g in got), name
+        assert len({g["url"] for g in got}) == len(got), name
+
+
+def test_melaka_uses_the_fatwas_own_date_and_not_the_pages_and_lists_the_newest_first():
+    got = _mufti("Mufti Melaka")
+    assert got[0]["published_at"] == date(2025, 11, 6) and "Ahmadi" in got[0]["title"]
+    assert [g["published_at"] for g in got] == sorted((g["published_at"] for g in got), reverse=True)
+    assert any(g["published_at"].year < 2025 for g in got)              # an older gazette keeps ITS date
+    assert not any("·" in g["title"] for g in got)                      # the category and reference are not the title
+
+
+def test_selangor_takes_the_day_from_the_address_and_skips_files_and_untitled_links():
+    base = "https://www.muftiselangor.gov.my"
+    html = (f'<a href="{base}/2026/05/18/kenyataan-akhbar-sahabat/">KENYATAAN AKHBAR: SAHABAT RASULULLAH</a>'
+            f'<a href="{base}/newclean/wp-content/uploads/2025/10/4.-CARTA.pdf">Carta Organisasi Jabatan</a>'
+            f'<a href="{base}/2026/03/10/no-title/"></a>')
+    [g] = watch.parse_mufti_selangor(html, "https://www.muftiselangor.gov.my/kenyataan-media/", date(2026, 11, 26))
+    assert g["published_at"] == date(2026, 5, 18) and g["domain"] == "fatwa" and g["kind"] == "Kenyataan Mufti Selangor"
+    assert len(_mufti("Mufti Selangor")) >= 3
+
+
+def test_pahang_drops_the_date_that_starts_each_title():
+    got = _mufti("Mufti Pahang")
+    assert not any(g["title"][:2].isdigit() for g in got)
+    assert any(g["published_at"] == date(2026, 8, 6) and g["title"].startswith("Kenyataan Mengenai Isu Zakat") for g in got)
+
+
+def test_collect_lists_only_a_fatwa_inside_the_sweep_window(monkeypatch):
+    pages = {src.url: (FIX / MUFTI_FIX[src.name]).read_text(encoding="utf-8") for src in watch.SOURCES if src.name in MUFTI}
+    monkeypatch.setattr(watch, "_get", lambda url, timeout: pages[url] if url in pages else (_ for _ in ()).throw(OSError("x")))
+    monkeypatch.setattr(watch, "pubmed", lambda timeout=30, competitors=None: ([], []))
+    today = date(2026, 11, 26)
+    rows, report = watch.collect(today=today)
+    fatwa = [r for r in rows if r["domain"] == "fatwa"]
+    assert fatwa and all(today - r["published_at"] <= watch.MAX_AGE for r in fatwa)
+    assert {r["source"] for r in fatwa} <= set(MUFTI) and all(r["section"] == "regulatory" for r in fatwa)
+    assert all(next(x for x in report if x["name"] == m)["ok"] for m in MUFTI)
+
+
+def test_a_pasted_fatwa_link_names_its_state_office():
+    assert watch.issuer_of("https://muftiperlis.gov.my/index.php/himpunan-fatwa-negeri/1777-x") == ("Mufti Perlis", "MY")
+    assert watch.issuer_of("https://mufti.sabah.gov.my/fatwa/1") == ("Mufti Sabah", "MY")
+    assert watch.issuer_of("https://efatwa.muftiwp.gov.my/a") == ("Mufti Wilayah Persekutuan", "MY")
+    assert watch.issuer_of("https://www.islam.gov.my/ms/kenyataan-media/1") == ("JAKIM", "MY")      # not caught by a mufti suffix
+
+
+def test_the_writer_is_told_what_makes_a_fatwa_relevant():
+    assert "FATWA" in watch.SYSTEM and "najis" in watch.SYSTEM and 'domain "fatwa"' in watch.SYSTEM

@@ -769,3 +769,13 @@ def test_a_momentary_google_403_is_asked_again_but_a_quota_answer_is_not(monkeyp
     assert got[1] == "403 Forbidden" and n == 3, "three tries, then the error stands"
     got, n = _retrying_in_the_cell(monkeypatch, [({}, "403 quotaExceeded")])
     assert got[1] == "403 quotaExceeded" and n == 1, "a quota answer is not retried"
+
+
+def test_a_refresh_button_sweeps_only_the_part_it_asked_for_and_is_answered():
+    # 26 Nov 2026: the Live source status tiles each carry a refresh button: force:true + force_part on the same save
+    assert intake.forced_only({"force": True, "force_part": "myra"}, None) == ["myra"]
+    assert intake.forced_only({"force": True, "force_part": "community"}, None) == ["community"]
+    assert intake.forced_only({"force": True}, None) is None                          # "Refresh all" / the tabs' Sweep now: every part
+    assert intake.forced_only({"force": True, "force_part": "nonsense"}, None) is None
+    assert intake.forced_only({"force": False, "force_part": "myra"}, None) is None   # a stale part never narrows an ordinary sweep
+    assert intake.forced_only({"force": True, "force_part": "myra"}, ["folders"]) == ["folders"]   # the workflow's own choice wins

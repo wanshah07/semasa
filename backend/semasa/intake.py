@@ -352,10 +352,20 @@ def prune(store: Any, now: datetime) -> None:
             log.info("could not prune %s: %s", section, str(exc)[:100])
 
 
+def forced_only(stored: dict[str, Any], only: list[str] | None) -> list[str] | None:
+    """The one part a refresh button asked for (Wan, 26 Nov 2026): `force_part` rides on the same save as `force`, and counts only
+    while `force` is set and the workflow was not told which parts to run itself. An unknown part means every part."""
+    part = str(stored.get("force_part") or "")
+    if only or not stored.get("force") or part not in {name for name, _fn in PARTS}:
+        return only
+    return [part]
+
+
 def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: list[str] | None = None,
         dry: bool = False) -> dict[str, Any]:
     now = now or datetime.now(UTC)
     cfg, stored = load_config(store)
+    only = forced_only(stored, only)
     report: dict[str, Any] = {}
     if cfg.get("enabled") is False:
         return {"off": True}
@@ -378,7 +388,8 @@ def run(store: Any, llm: Any, client: Any, now: datetime | None = None, only: li
         kept = {k: v for k, v in before.items() if k not in report and isinstance(v, dict)}
         for v in kept.values():
             v.setdefault("at", stored.get("last_run"))
-        value = {**stored, "last_run": now.isoformat(), "report": {**kept, **report}, "force": False}   # "Sweep now" is answered
+        value = {**stored, "last_run": now.isoformat(), "report": {**kept, **report}, "force": False,
+                 "force_part": None}   # "Sweep now" is answered
         store.table(db.SETTINGS).upsert({"key": KEY, "value": value,
                                          "updated_at": now.isoformat()}, on_conflict="key").execute()
         shown = sum(int((v.get("shown") or {}).get("reddit", 0)) + int((v.get("shown") or {}).get("youtube", 0))

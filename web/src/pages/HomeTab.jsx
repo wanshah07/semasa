@@ -165,7 +165,7 @@ export default function HomeTab({ ideas, posts, log, activity, brand, go, user, 
   return (
     <main className="mx-auto max-w-page px-4 pb-20 pt-6 sm:px-6">
       <App1
-        header={<>{header}{shows("sources") && <SourceStatus setting={settings?.source_lights} go={go} />}</>}
+        header={<>{header}{shows("sources") && <SourceStatus setting={settings?.source_lights} go={go} settings={settings} save={save} onToast={onToast} />}</>}
         keys={{ line: "drafted", area: "published" }}
         stats={[
           { label: t("Idea baharu", "New ideas"), value: String(stats.ideasNew), icon: Lightbulb,

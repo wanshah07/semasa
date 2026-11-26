@@ -66,6 +66,11 @@ UNOFFICIAL_ROWS = 150
 WATCH_WINDOW = 500              # the newest fresh feed rows read a run (official sections only, unless headlines are on)
 
 
+def watch_domains() -> tuple[str, ...]:
+    from .watch import DOMAINS
+    return tuple(d for d in DOMAINS if d != "lain")
+
+
 def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
     raw = settings.get("autofill") if isinstance(settings.get("autofill"), dict) else {}
     on = raw.get("enabled") is True
@@ -93,7 +98,11 @@ def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, A
         every = max(2, min(MAX_FOCUS_EVERY, int(raw.get("focus_every") or FOCUS_EVERY)))
     except (TypeError, ValueError):
         every = FOCUS_EVERY
+    # ws.regulab writes ONLY these domains when the list is set (Wan, 26 Nov 2026: stop ws.regulab research, but "buatkan
+    # autofill" for fatwa): ["fatwa"] = fatwa and nothing else. [] / absent = every domain the rota gives that day, as before.
+    only = [d for d in (raw["regulab_only"] if isinstance(raw.get("regulab_only"), list) else []) if d in watch_domains()]
     return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams, "focus": focus, "focus_every": every,
+            "regulab_only": only,
             "unofficial": raw.get("unofficial") is not False,      # on unless Wan switches it off (26 Nov 2026)
             "news": raw.get("news") is True,              # the newspaper headline (isu semasa) is OFF unless Wan turns it on
             "min_drafts": floor, "floor_days": reach}
@@ -574,9 +583,11 @@ def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> 
 
 
 def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: str,
-         prefer: set[str] | None = None) -> dict[str, Any] | None:
+         prefer: set[str] | None = None, only: list[str] | None = None) -> dict[str, Any] | None:
     """An urgent file for THIS date first (Studio's `urgent post/DDMMYY` override), then the first item that fits. `prefer` (the
     focus topics, when this position is due one) keeps only the fitting items on those topics, if there are any."""
+    if stream == "regulab" and only:
+        pool = [x for x in pool if x.get("domain") in only]        # the list Wan limited ws.regulab's autofill to
     for x in pool:
         if (x.get("raw") or {}).get("urgent_for") == day:
             return x
@@ -754,7 +765,7 @@ def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dic
                 break
             while reach[stream]:
                 date, slot, allow = reach[stream].pop(0)
-                item = pick(pool, stream, allow, date, focus.prefer() if focus else None)
+                item = pick(pool, stream, allow, date, focus.prefer() if focus else None, cfg.get("regulab_only"))
                 if not item:
                     continue
                 pool = spend(pool, item)
@@ -817,7 +828,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
                 if made >= cfg["per_run"]:
                     break
-                item = pick(pool, stream, allow, date, focus.prefer())
+                item = pick(pool, stream, allow, date, focus.prefer(), cfg["regulab_only"])
                 if not item:
                     empty += 1
                     continue

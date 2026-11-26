@@ -458,3 +458,51 @@ def test_an_faq_answer_comes_before_a_social_post():
     faq = autofill.faq_candidates(_focus_store([], [_faq(1, "kosmetik")]))
     ranked = autofill.rank_candidates([_social(1, "threads"), *faq])
     assert [x["section"] for x in ranked] == ["faq", "threads"]
+
+
+# --- ws.regulab limited to fatwa (Wan, 26 Nov 2026: stop ws.regulab research, "buatkan autofill" for fatwa) ----------------
+
+def _fatwa_settings(**extra):
+    return {"brand": BRAND, "autofill": {"enabled": True, "days_ahead": 3, "per_run": 5, "min_drafts": 0, "streams": ["regulab"],
+                                         "regulab_only": ["fatwa"], **extra}}
+
+
+def test_regulab_only_reads_a_list_of_known_domains_and_nothing_else():
+    assert autofill.config({"autofill": {"regulab_only": ["fatwa"]}})["regulab_only"] == ["fatwa"]
+    assert autofill.config({"autofill": {"regulab_only": ["fatwa", "nonsense", "lain"]}})["regulab_only"] == ["fatwa"]
+    assert autofill.config({"autofill": {"regulab_only": "fatwa"}})["regulab_only"] == []
+    assert autofill.config({"autofill": {}})["regulab_only"] == []
+
+
+def test_regulab_writes_only_fatwa_when_limited_to_it():
+    store = _store([_w(1, "halal_my"), _w(2, "kosmetik"), _w(3, "fatwa"), _w(4, "fatwa")])
+    autofill.run(store, _fatwa_settings(), NOW)
+    ideas = store.tables["semasa_ideas"]
+    assert sorted(i["source_url"][-1] for i in ideas) == ["3", "4"] and all(i["domain"] == "fatwa" for i in ideas)
+    assert {i["brief"]["position"]["date"] for i in ideas} == {"2026-09-27"}          # Sunday: the rota gives fatwa that day
+
+
+def test_without_the_limit_regulab_still_takes_every_domain():
+    store = _store([_w(1, "halal_my"), _w(2, "kosmetik"), _w(3, "fatwa")])
+    autofill.run(store, {"brand": BRAND, "autofill": {"enabled": True, "days_ahead": 3, "per_run": 5, "min_drafts": 0,
+                                                       "streams": ["regulab"]}}, NOW)
+    assert {i["domain"] for i in store.tables["semasa_ideas"]} == {"halal_my", "kosmetik", "fatwa"}
+
+
+def test_the_floor_never_pulls_a_non_fatwa_item_into_regulab_when_limited():
+    store = _store([_w(1, "halal_my"), _w(2, "kosmetik")])
+    out = autofill.run(store, _fatwa_settings(min_drafts=2), NOW)
+    assert store.tables["semasa_ideas"] == [] and "short" in out
+
+
+def test_the_floor_writes_a_fatwa_item_into_regulab_when_limited():
+    store = _store([_w(3, "fatwa"), _w(2, "kosmetik")])
+    autofill.run(store, _fatwa_settings(min_drafts=2, days_ahead=1), NOW)
+    assert [i["domain"] for i in store.tables["semasa_ideas"]] == ["fatwa"]
+
+
+def test_the_limit_never_touches_linkedin():
+    store = _store([_w(i, "kosmetik", "publication") for i in range(3)])
+    autofill.run(store, {"brand": BRAND, "autofill": {"enabled": True, "days_ahead": 7, "per_run": 2, "min_drafts": 0,
+                                                       "streams": ["regulab", "linkedin"], "regulab_only": ["fatwa"]}}, NOW)
+    assert all(i["stream"] == "linkedin" for i in store.tables["semasa_ideas"]) and store.tables["semasa_ideas"]

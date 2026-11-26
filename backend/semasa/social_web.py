@@ -558,9 +558,83 @@ def _when(v: Any) -> datetime | None:
         return None
 
 
+# APIFY IS INSTAGRAM'S LAST RESORT (Wan, 26 Nov 2026: "jadikan APIFY as fallback after playwright"). Only a failure of the
+# saved login itself calls it: no saved login, a login wall, no browser. An empty result is NOT a failure (an account with
+# nothing fresh would burn the month's five free runs in a day), and neither is a timeout. See apify_budget.py for the limits
+# and why Apify's own numbers are the ledger.
+APIFY_WHEN = ("needs a saved login", "asked for a login", "no browser to read", "Playwright is not installed")
+
+
+def apify_urls(cfg: dict[str, Any], runs: int = 0, per_run: int = 1) -> list[str]:
+    """What one Apify run reads: the watched accounts first (a profile's newest posts, rotating so every account gets its turn),
+    else the first hashtag. `per_run` is how many URLs a run may carry: the actor wants at least ten posts a URL."""
+    opts = cfg.get("instagram") or {}
+    handles = [h for h in dict.fromkeys(str(a).strip().lstrip("@") for a in (opts.get("accounts") or []))
+               if re.fullmatch(r"[\w.\-]{1,60}", h)][:MAX_ACCOUNTS]
+    if handles:
+        start = runs % len(handles)
+        picked = [handles[(start + i) % len(handles)] for i in range(min(per_run, len(handles)))]
+        return [f"{IG_BASE}/{h}/" for h in picked]
+    tags = [t for t in (hashtag(q) for q in (opts.get("queries") or [])) if t][:1]
+    return [f"{IG_BASE}/explore/tags/{t}/" for t in tags]
+
+
+def read_via_apify(cfg: dict[str, Any], now: datetime) -> tuple[list[dict[str, Any]] | None, str]:
+    """(posts, note) from Apify, filtered like collect() filters a browser read. posts is None when nothing was asked (the note
+    says why), [] when Apify answered with nothing fresh."""
+    from . import apify_budget, instagram_api
+    opts = cfg.get("instagram") or {}
+    if opts.get("apify") is False:
+        return None, "switched off (instagram.apify is false)"
+    if not apify_budget.token():
+        return None, "not set up (the secret APIFY_TOKEN)"
+    lim = apify_budget.limits()
+    try:
+        runs, _ = apify_budget.runs_this_month(apify_budget.token(), now)
+    except apify_budget.Unreadable as exc:
+        return None, f"Apify could not be asked ({exc})"
+    urls = apify_urls(cfg, runs, max(1, lim["items"] // 10))
+    got, note = instagram_api.fetch(urls, now)
+    if note.startswith("not run") or note.startswith("the run"):
+        return None, note
+    hours = max(6, min(14 * 24, int(opts.get("hours") or 72)))
+    seen: set[str] = set()
+    posts: list[dict[str, Any]] = []
+    stats = {"tags": 0, "accounts": len(urls), "found": 0, "too_old": 0, "own": 0, "newest_h": None, "hours": hours}
+    for p in got:
+        when = _when(p.get("timestamp"))
+        if p["id"] in seen or not when:
+            continue
+        stats["found"] += 1
+        age = (now - when).total_seconds() / 3600
+        stats["newest_h"] = round(age) if stats["newest_h"] is None else min(stats["newest_h"], round(age))
+        if age > hours:
+            stats["too_old"] += 1
+        elif is_own(p, cfg.get("own_accounts") or []):
+            stats["own"] += 1
+        else:
+            seen.add(p["id"])
+            posts.append(p)
+    posts.sort(key=score, reverse=True)
+    LAST["instagram"] = {**stats, "notes": [f"via Apify: {note}"]}
+    return posts, note
+
+
 def fetch(platform: str, cfg: dict[str, Any], now: datetime | None = None) -> tuple[list[dict[str, Any]], str]:
-    """The sweep's entry point for 'facebook' or 'instagram'. (posts, error)."""
+    """The sweep's entry point for 'facebook' or 'instagram'. (posts, error). Instagram falls back to Apify when the saved login
+    cannot be used at all (never when it simply found nothing), within the limits in apify_budget.py."""
     now = now or datetime.now(UTC)
+    posts, err = _fetch_browser(platform, cfg, now)
+    if platform != "instagram" or not err or not any(w in err for w in APIFY_WHEN):
+        return posts, err
+    got, note = read_via_apify(cfg, now)
+    if got is None:
+        return [], f"{err}; Apify fallback: {note}"
+    log.info("instagram read through Apify (the saved login could not be used): %s", note)
+    return got, ""
+
+
+def _fetch_browser(platform: str, cfg: dict[str, Any], now: datetime) -> tuple[list[dict[str, Any]], str]:
     if (cfg.get(platform) or {}).get("web") is False:
         return [], ""
     state = storage_state_path()

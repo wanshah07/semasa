@@ -60,6 +60,14 @@ jobs:
           PW_STORAGE_STATE_IG_B64: ${{ secrets.PW_STORAGE_STATE_IG_B64 }}
           # optional: a throwaway Reddit login of our own (reddit_web.py); without it Reddit is read through the shared Composio app
           PW_STORAGE_STATE_REDDIT_B64: ${{ secrets.PW_STORAGE_STATE_REDDIT_B64 }}
+          # Instagram's LAST resort when the saved login cannot be used (backend/semasa/apify_budget.py): the apidojo actor on Apify.
+          # Empty = never called. The limits below default to the Free plan's (5 runs a month, 10 posts a run, $5); raise them with
+          # the repository variables of the same names the day a paid plan is bought.
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_MONTHLY_CAP_USD: ${{ vars.APIFY_MONTHLY_CAP_USD }}
+          APIFY_MONTHLY_RUNS: ${{ vars.APIFY_MONTHLY_RUNS }}
+          APIFY_ITEMS_PER_RUN: ${{ vars.APIFY_ITEMS_PER_RUN }}
+          APIFY_MIN_GAP_HOURS: ${{ vars.APIFY_MIN_GAP_HOURS }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_FALLBACK_API_KEY: ${{ secrets.LLM_FALLBACK_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

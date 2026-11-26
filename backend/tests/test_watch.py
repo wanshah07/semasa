@@ -476,9 +476,9 @@ def test_the_writers_no_as_text_hides_the_item():
 
 # --- the state muftis (Wan, 26 Nov 2026: "cari cara untuk dapatkan fatwa sebab ada banyak negeri ada sumber fatwa") --------
 
-MUFTI = ["Mufti Wilayah Persekutuan", "Mufti Perlis", "Mufti Melaka", "Mufti Pahang", "Mufti Selangor"]
+MUFTI = ["Mufti Wilayah Persekutuan", "Mufti Perlis", "Mufti Melaka", "Mufti Selangor"]
 MUFTI_FIX = {"Mufti Wilayah Persekutuan": "mufti_wp.html", "Mufti Perlis": "mufti_perlis.html",
-             "Mufti Melaka": "mufti_melaka.html", "Mufti Pahang": "mufti_pahang.html", "Mufti Selangor": "mufti_selangor.html"}
+             "Mufti Melaka": "mufti_melaka.html", "Mufti Selangor": "mufti_selangor.html"}
 
 
 def _mufti(name):
@@ -516,10 +516,10 @@ def test_selangor_takes_the_day_from_the_address_and_skips_files_and_untitled_li
     assert len(_mufti("Mufti Selangor")) >= 3
 
 
-def test_pahang_drops_the_date_that_starts_each_title():
-    got = _mufti("Mufti Pahang")
-    assert not any(g["title"][:2].isdigit() for g in got)
-    assert any(g["published_at"] == date(2026, 8, 6) and g["title"].startswith("Kenyataan Mengenai Isu Zakat") for g in got)
+def test_pahang_is_not_a_source_because_a_github_runner_cannot_reach_it():
+    assert "Mufti Pahang" not in [src.name for src in watch.SOURCES] and not hasattr(watch, "parse_mufti_pahang")
+    pasted = watch.issuer_of("https://mufti.pahang.gov.my/index.php/sumber/media/x")
+    assert pasted == ("Mufti Pahang", "MY")                                        # a pasted link still names it
 
 
 def test_collect_lists_only_a_fatwa_inside_the_sweep_window(monkeypatch):

@@ -300,9 +300,12 @@ def do_myra(store: Any, llm: Any, client: Any, cfg: dict[str, Any], now: datetim
     if raw.get("error"):
         raise RuntimeError(f"the sheet could not be read{f' in {tries} tries' if tries > 1 else ''}: {raw['error']}")
     today = (now + timedelta(hours=8)).date()
-    rows = myra.findings(raw.get("rows") or [], today, int(cfg.get("days") or 10), limit=int(cfg.get("per_run") or 8) * 2)
+    # a row now yields a finding per reference (a dozen a day), so the window must be wide enough that the findings already
+    # written do not crowd the new ones out of it
+    per_run = int(cfg.get("per_run") or 8)
+    rows = myra.findings(raw.get("rows") or [], today, int(cfg.get("days") or 10), limit=max(60, per_run * 6))
     known = have(store, [r["url"] for r in rows])
-    fresh = [r for r in rows if r["url"] not in known][:int(cfg.get("per_run") or 8)]
+    fresh = [r for r in rows if r["url"] not in known][:per_run]
     watch.annotate(llm, fresh)
     write(store, [watch.to_row(r) for r in fresh], dry)
     return {"read": len(raw.get("rows") or []), "new": len(fresh), "hidden": sum(1 for r in fresh if r.get("relevant") is False),

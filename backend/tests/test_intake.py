@@ -252,14 +252,15 @@ def test_the_myra_cell_reads_the_sheet_read_only_with_the_owners_account():
                    tools_from({"GOOGLESHEETS_BATCH_GET": batch}))["out"]
     assert seen["account"] == "googlesheets_serau-tucker" and seen["args"]["ranges"] == ["Sheet1!A1:G500"]
     # only the rows with an update, inside the days that are read: the "No" rows and the 1 September row stay in the sheet
-    assert [r[0] for r in out["rows"]] == ["25/09/2026", "28/09/2026"] and len(out["rows"][0]) == 7 and out["trimmed"] == 0
+    assert [r[0] for r in out["rows"]] == ["25/09/2026", "28/09/2026"] and len(out["rows"][0]) == 8 and out["trimmed"] == 0
     assert [g["title"] for g in myra.findings(out["rows"], date(2026, 9, 30), days=10)][0] == "Amaran kosmetik baharu SR/02676/26"
 
 
 def test_a_sheet_too_big_for_the_workbench_answer_is_trimmed_oldest_first_instead_of_failing_the_sweep():
     """14 Nov 2026: 80 rows of long text made a 46,249-character answer and every sweep failed, MYRA red for good."""
-    rows = [[f"{d:02d}/11/2026", "Yes", "Yes", "EU, MY", "x" * 2500 + f" (hari {d})", f"SR/{d}", f"https://x/{d}"]
-            for d in range(1, 29)]
+    rows = [[f"{d:02d}/11/2026", "Yes", "Yes", "EU, MY", " ".join(f"{x} " + "x" * 500 for x in [f"SR/{d}{k}/26" for k in range(6)]),
+             "; ".join(f"SR/{d}{k}/26" for k in range(6)), f"https://x/{d}"] for d in range(1, 29)]
+    assert len(rows[0][4]) > 3000
 
     def batch(args, account):
         return ({"data": {"valueRanges": [{"values": [["Tarikh"] + [""] * 6] + rows}]}}, "")
@@ -270,7 +271,69 @@ def test_a_sheet_too_big_for_the_workbench_answer_is_trimmed_oldest_first_instea
     out = r["out"]
     assert out["trimmed"] > 0 and len(json.dumps(out)) < foryou.MAX_ANSWER
     assert out["rows"][-1][0] == "28/11/2026"                               # the newest rows are the ones kept
-    assert all(len(r_[4]) <= 1500 for r_ in out["rows"])
+    assert all(len(r_[4]) <= 300 for r_ in out["rows"])                     # the row's own text is no longer sent whole
+
+
+# --- a row that grew into a 30,000-character write-up (26 Nov 2026: "MYRA takde bacaan") ---------------------------------
+
+NOTES = ('TETINGKAP larian ini 25/11/2026 13:09:39 hingga 26/11/2026 13:09:39 UTC, tepat 24 jam. Hujungnya ialah bacaan jam; '
+         'pertindihan 1 minit 22 saat tidak memudaratkan kerana dedupe dibuat atas rujukan instrumen; ')
+BIG_ROW = ["26/11/2026", "Yes", "Yes", "EU (Jerman), EU (Itali), Brazil",
+           NOTES + "EU Safety Gate: SR/03442/26 (Jerman, asal China; Golden Pearl Beauty Cream, krim kulit, mengandungi BMHCA dan HICC "
+           "yang dilarang, langkah COMPULSORY); SR/03456/26 (Itali, asal Itali; Proteo Line Colors krim pewarna rambut, BMHCA); "
+           "SR/03458/26 dan SR/03459/26 (Itali, asal China; Tertio Smalto gel semipermanente, TMPTA yang dilarang); "
+           "G/TBT/N/BDI/399/Add.3 Burundi menotifikasi draf piawaian kosmetik. " + "Catatan proses panjang. " * 1200,
+           "SR/03442/26; SR/03456/26; SR/03458/26; SR/03459/26; G/TBT/N/BDI/399/Add.3; Resolucao 4.632/2026",
+           "https://ec.europa.eu/safety-gate-alerts/screen/webReport/alertDetail/1"]
+
+
+def _cell_rows(rows):
+    def batch(args, account):
+        return ({"data": {"valueRanges": [{"values": [["Tarikh"] + [""] * 6] + rows}]}}, "")
+    return run_cell(myra._CELL, {"id": "S", "range": "A1:G500", "account": None, "since": "2026-11-01"},
+                    tools_from({"GOOGLESHEETS_BATCH_GET": batch}))["out"]
+
+
+def test_a_huge_row_gives_one_finding_per_reference_and_never_the_runs_own_notes():
+    out = _cell_rows([BIG_ROW])
+    assert len(json.dumps(out)) < foryou.MAX_ANSWER and out["trimmed"] == 0
+    got = myra.findings(out["rows"], date(2026, 11, 26), days=10)
+    refs = [g["raw"]["ref_no"] for g in got]
+    assert refs == ["SR/03442/26", "SR/03456/26", "SR/03458/26", "SR/03459/26", "G/TBT/N/BDI/399/Add.3"]   # Resolucao: not in the text
+    assert not any(g["title"].lower().startswith(("tetingkap", "pertindihan", "hujungnya")) or "larian ini" in g["title"].lower()
+                   for g in got)
+    assert "Golden Pearl" in got[0]["title"] and "BMHCA" in got[1]["title"] and "TMPTA" in got[3]["title"] + got[2]["title"]
+    assert len({g["url"] for g in got}) == 5 and all("#myra-2026-11-26-" in g["url"] for g in got)
+    assert got[0]["url"].endswith("#myra-2026-11-26-sr-03442-26") and got[0]["raw"]["link_shared"] is True
+    assert got[0]["summary"].endswith("(Rujukan: SR/03442/26)")
+
+
+def test_a_finding_keeps_its_key_when_the_row_is_edited_and_never_meets_a_first_generation_key():
+    first = {g["raw"]["ref_no"]: g["url"] for g in myra.findings(_cell_rows([BIG_ROW])["rows"], date(2026, 11, 26))}
+    edited = list(BIG_ROW)
+    edited[4] = "Pembetulan: sebuah ayat baharu di hadapan; " + BIG_ROW[4]                      # every finding moves down the row
+    again = {g["raw"]["ref_no"]: g["url"] for g in myra.findings(_cell_rows([edited])["rows"], date(2026, 11, 26))}
+    assert again == first
+    assert not any(u.endswith(("#myra-2026-11-26-1", "#myra-2026-11-26-2")) for u in first.values())   # the junk rows' keys
+
+
+def test_a_row_with_no_reference_in_its_text_keeps_its_fragments_but_not_the_runs_notes():
+    row = ["25/11/2026", "Yes", "Yes", "EU", NOTES + "EU Safety Gate terbitkan laporan minggu 48; Ada 3 amaran kosmetik baharu",
+           "SR/9", "-"]
+    got = myra.findings(_cell_rows([row])["rows"], date(2026, 11, 26), days=10)
+    assert [g["title"] for g in got] == ["EU Safety Gate terbitkan laporan minggu 48", "Ada 3 amaran kosmetik baharu"]
+    assert got[0]["url"] == "myra://2026-11-25-f1"
+    # the same row as the first generation sent it (no items): still read, minus the notes, under the old date-n keys
+    old = myra.findings([row[:7]], date(2026, 11, 26), days=10)
+    assert [g["url"] for g in old] == ["myra://2026-11-25-3", "myra://2026-11-25-4"]
+
+
+def test_the_myra_sweep_looks_far_enough_back_that_findings_already_written_do_not_crowd_out_new_ones(monkeypatch):
+    rows = [[f"{d:02d}/11/2026", "", "Yes", "EU", "", "-", "https://x"] + [[{"ref": f"SR/{d}{k}", "text": f"Penemuan {d} {k} panjang"}
+                                                                          for k in range(12)]] for d in (20, 23, 24, 25, 26)]
+    got = myra.findings(rows, date(2026, 11, 26), days=10, limit=60)
+    assert len(got) == 60 and got[0]["raw"]["row_date"] == "2026-11-26"
+    assert len(myra.findings(rows, date(2026, 11, 26), days=10, limit=16)) == 16
 
 
 def test_myra_fetch_asks_only_for_the_recent_days_in_malaysia_time():

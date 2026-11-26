@@ -490,3 +490,37 @@ def test_collect_reads_accounts_with_the_account_page_and_hashtags_with_the_othe
     cfg = {"facebook": {"queries": ["halal"], "accounts": ["someone"]}}
     social_web.collect(hashtag_page, "facebook", cfg, NOW, tag, account, account_page=account_page)
     assert used == [("tag", hashtag_page), ("account", account_page)]
+
+
+# --- Instagram: the newest posts, not the pinned ones (26 Nov 2026) -------------------------------------------------------
+
+def test_a_post_link_carries_its_creation_time():
+    assert social_web.ig_code_time("/p/DclqrvZDyzl/").date().isoformat() == "2026-08-28"
+    assert social_web.ig_code_time("/labmuffinbeautyscience/reel/DOpj0zUDVSq/").date().isoformat() == "2025-09-16"
+    assert social_web.ig_code_time("/explore/tags/halal/") is None
+    assert social_web.ig_code_time("/p/bad!code/") is None
+
+
+def test_the_newest_posts_are_chosen_not_the_first_tiles_which_are_the_pinned_ones():
+    grid = ["/p/DOpj0zUDVSq/",          # pinned, September 2025
+            "/p/DNKQpSFsrMA/",          # pinned, August 2025
+            "/p/DcIJ572muzQ/",          # 17 Aug 2026 (first unpinned tile)
+            "/p/DcXlGvjD6Hw/",          # 23 Aug 2026
+            "/p/DclqrvZDyzl/"]          # 28 Aug 2026  (newest, but last in this made-up order)
+    assert social_web.newest_first(grid, 3) == ["/p/DclqrvZDyzl/", "/p/DcXlGvjD6Hw/", "/p/DcIJ572muzQ/"]
+    assert social_web.newest_first(grid, 1) == ["/p/DclqrvZDyzl/"]
+
+
+def test_a_real_grid_with_three_pinned_posts_reads_the_fresh_ones():
+    grid = ["/p/DOpj0zUDVSq/", "/p/DNKQpSFsrMA/", "/p/DNHr0fpNq1l/",       # three pinned, 2025
+            "/p/DclqrvZDyzl/", "/p/DcXlGvjD6Hw/", "/p/DcIJ572muzQ/"]      # newest first, 2026
+    got = social_web.newest_first(grid, 3)
+    assert got == ["/p/DclqrvZDyzl/", "/p/DcXlGvjD6Hw/", "/p/DcIJ572muzQ/"]
+    # a grid that shows only the pinned tiles still returns them, newest first, rather than nothing
+    assert social_web.newest_first(grid[:3], 3) == ["/p/DOpj0zUDVSq/", "/p/DNKQpSFsrMA/", "/p/DNHr0fpNq1l/"]
+
+
+def test_an_unreadable_link_keeps_the_grid_order_as_before():
+    grid = ["/p/DOpj0zUDVSq/", "/odd/link/", "/p/DclqrvZDyzl/"]
+    assert social_web.newest_first(grid, 2) == ["/p/DOpj0zUDVSq/", "/odd/link/"]
+    assert social_web.newest_first([], 3) == []

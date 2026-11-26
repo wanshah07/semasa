@@ -361,6 +361,43 @@ def parse_instagram(desc: str, time_attr: str, href: str, cap: int = 500) -> dic
             "counts": {k: parse_count(v) for k, v in shown.items()} or {"likes": None}, "shown": shown}
 
 
+_B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+_IG_CODE = re.compile(r"/(?:p|reel)/([\w-]{6,})/?(?:[?#].*)?$")
+
+
+def ig_code_time(link: str) -> datetime | None:
+    """When a post was made, read off its link: the shortcode in /p/<code>/ or /reel/<code>/ is the media id in base 64, and the
+    id's upper bits are the creation time in milliseconds (since 2011-08-25 14:07:01 UTC, Instagram's epoch). None when the link
+    has no readable code. Checked on posts of known dates (DOpj0zUDVSq is 16 Sep 2025, DclqrvZDyzl is 28 Aug 2026)."""
+    m = _IG_CODE.search(link or "")
+    if not m:
+        return None
+    n = 0
+    for ch in m.group(1):
+        i = _B64.find(ch)
+        if i < 0:
+            return None
+        n = n * 64 + i
+    try:
+        when = datetime.fromtimestamp(((n >> 23) + 1_314_220_021_721) / 1000, UTC)
+    except (OverflowError, OSError, ValueError):
+        return None
+    return when if datetime(2012, 1, 1, tzinfo=UTC) <= when <= datetime.now(UTC) + timedelta(days=2) else None
+
+
+def newest_first(links: list[str], n: int) -> list[str]:
+    """The `n` NEWEST posts of a grid, not the first `n` tiles. A profile grid is newest first EXCEPT that up to three PINNED
+    posts sit at the top however old they are, so reading the first three tiles read exactly the three pinned ones: on 26 Nov 2026
+    (when PER_ACCOUNT_IG came down from 6 to 3) @labmuffinbeautyscience gave 3 posts 3,501 hours old and nothing fresh.
+    The creation time is in each link (ig_code_time), so the newest are picked from every tile the grid showed, at no extra page
+    load. If any link has no readable time the grid order stands, as before."""
+    times = [ig_code_time(h) for h in links]
+    if not links or any(t is None for t in times):
+        return links[:n]
+    order = sorted(range(len(links)), key=lambda i: (-times[i].timestamp(), i))  # type: ignore[union-attr]
+    return [links[i] for i in order[:n]]
+
+
 def pace(page: Any, low: int, high: int) -> None:
     """A random pause between two page loads, `low` to `high` ms (social_pace.py): the same beat every time reads as a robot."""
     import random
@@ -392,7 +429,7 @@ def read_instagram(page: Any, tag: str, now: datetime) -> tuple[list[dict[str, A
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_IG_B64; see ops/SOCIAL-LOGIN.md)"
         where = _where(page)
-        links = (page.evaluate(_IG_LINKS) or [])[:PER_TAG_IG]
+        links = newest_first(page.evaluate(_IG_LINKS) or [], PER_TAG_IG)
         out, refused = _ig_open(page, links)
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"
@@ -410,7 +447,7 @@ def read_instagram_account(page: Any, handle: str, now: datetime, cap: int = 500
         if any(p in str(getattr(page, "url", "")) for p in _WALL_PARTS):
             return [], "Instagram asked for a login (save one as the secret PW_STORAGE_STATE_IG_B64; see ops/SOCIAL-LOGIN.md)"
         where = _where(page)
-        links = (page.evaluate(_IG_LINKS) or [])[:PER_ACCOUNT_IG]
+        links = newest_first(page.evaluate(_IG_LINKS) or [], PER_ACCOUNT_IG)
         out, refused = _ig_open(page, links, cap)
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {str(exc)[:160]}"

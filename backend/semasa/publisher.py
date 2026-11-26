@@ -896,6 +896,31 @@ def _publish_post(ctx: _Run, post: dict[str, Any]) -> None:
         pin.save_final(patch, published)
 
 
+def promote_sent(store: Any, settings: dict[str, Any], limit: int = 200) -> int:
+    """A post that has gone out on every one of its channels is POSTED, whatever status it still carries (Wan, 26 Nov 2026: "if
+    any draft has successfully post, move it auto, do not retain in draft"). The publisher promotes the posts it handles, but a
+    draft whose channels were adopted from the platform, or a scheduled post whose last confirmation never landed, kept its old
+    status for ever (three 1-2 Oct posts read "scheduled" long after they were sent). Never raises; returns how many moved."""
+    moved = 0
+    try:
+        rows = (store.table(db.POSTS).select("*").in_("status", ["draft", "approved", "scheduled"])
+                .order("date", desc=True).limit(limit).execute().data or [])
+        for post in rows:
+            published = post.get("published") if isinstance(post.get("published"), dict) else {}
+            channels = post_channels(settings, post)
+            # `all([])` is True: a post with no channel left must not read as posted
+            if channels and all((published.get(c) or {}).get("status") == "sent" for c in channels):
+                store.table(db.POSTS).update({"status": "posted"}).eq("id", post["id"]).in_(
+                    "status", ["draft", "approved", "scheduled"]).execute()
+                shown = str(post.get("hook") or post["id"])[:60]
+                db.log_event(store, "info", "post", "post.promoted", f"Post sudah keluar di semua saluran, ke posted: {shown}",
+                             ref_table=db.POSTS, ref_id=post["id"], detail={"from": post.get("status"), "channels": channels})
+                moved += 1
+    except Exception as exc:  # noqa: BLE001 - housekeeping never stops a run
+        log.info("posted posts not promoted (%s)", str(exc)[:120])
+    return moved
+
+
 def run(store: Any, now: datetime | None = None, clients: dict[str, Any] | None = None) -> dict[str, int]:
     now = now or datetime.now(UTC)
     settings = load_settings(store)

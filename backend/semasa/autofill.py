@@ -43,6 +43,12 @@ MAX_DAYS, MAX_PER_RUN = 7, 5
 # invents: with nothing fitting, the run says it is short and writes nothing.
 MIN_DRAFTS, MAX_MIN_DRAFTS = 2, 10
 FLOOR_DAYS, MAX_FLOOR_DAYS = 14, 30
+# A PAPER A WEEK ON LINKEDIN (Wan, 27 Nov 2026: "any post related to new publication research only out 1 a week, more to
+# guideline or others"). Autofill writes at most `linkedin_papers_per_week` (default 1, 0 = none) research-paper ideas for
+# LinkedIn in any one week (Monday to Sunday, Malaysia time), counting the LinkedIn posts of that week already written about a
+# paper (angle F, not rejected) and the ideas still being written, so the rest of the week goes to guidelines, circulars and
+# official pages. Wan's own ideas are never counted out: he can still write a paper post by hand.
+PAPERS_PER_WEEK = 1
 # FOCUS TOPICS (Wan, 25 Nov 2026: "for draft post, add more on DRGD, FAQ, FSQD"). One draft in every FOCUS_EVERY (default 3) is
 # drawn from these topics when something fitting exists: DRGD (NPRA's Drug Registration Guidance Document and drug registration),
 # FSQD (the Food Safety and Quality Division: the Food Act and Regulations, food labelling) and FAQ (the answers Wan keeps in his
@@ -101,11 +107,57 @@ def config(settings: dict[str, Any], now: datetime | None = None) -> dict[str, A
     # ws.regulab writes ONLY these domains when the list is set (Wan, 26 Nov 2026: stop ws.regulab research, but "buatkan
     # autofill" for fatwa): ["fatwa"] = fatwa and nothing else. [] / absent = every domain the rota gives that day, as before.
     only = [d for d in (raw["regulab_only"] if isinstance(raw.get("regulab_only"), list) else []) if d in watch_domains()]
+    try:
+        papers = max(0, min(7, int(raw["linkedin_papers_per_week"]))) if "linkedin_papers_per_week" in raw else PAPERS_PER_WEEK
+    except (TypeError, ValueError):
+        papers = PAPERS_PER_WEEK
     return {"enabled": on, "days_ahead": days, "per_run": per, "streams": streams, "focus": focus, "focus_every": every,
-            "regulab_only": only,
+            "regulab_only": only, "linkedin_papers": papers,
             "unofficial": raw.get("unofficial") is not False,      # on unless Wan switches it off (26 Nov 2026)
             "news": raw.get("news") is True,              # the newspaper headline (isu semasa) is OFF unless Wan turns it on
             "min_drafts": floor, "floor_days": reach}
+
+
+class PaperQuota:
+    """How many research-paper posts LinkedIn may still take in each week, from what the store already holds."""
+
+    def __init__(self, per_week: int, load: dict[str, int] | None = None):
+        self.per_week, self.load = per_week, dict(load or {})
+
+    @staticmethod
+    def week(day: str) -> str:
+        d = datetime.fromisoformat(day).date() if "T" in day else datetime.strptime(day[:10], "%Y-%m-%d").date()
+        return (d - timedelta(days=d.weekday())).isoformat()              # the Monday of that week
+
+    def ok(self, day: str) -> bool:
+        return self.load.get(self.week(day), 0) < self.per_week
+
+    def take(self, day: str) -> None:
+        self.load[self.week(day)] = self.load.get(self.week(day), 0) + 1
+
+    @classmethod
+    def read(cls, store: Any, per_week: int, now: datetime | None = None) -> PaperQuota:
+        """The weeks' load: LinkedIn posts about a paper (angle F) not rejected, plus LinkedIn ideas about one still waiting to be
+        written. Never raises: a read that fails counts the CURRENT quota as full, so a failed read can never flood the week."""
+        load: dict[str, int] = {}
+        today = ((now or datetime.now(UTC)) + MYT).date()
+        since = (today - timedelta(days=today.weekday())).isoformat()
+        try:
+            posts = (store.table(db.POSTS).select("date,angle,status").eq("stream", "linkedin").eq("angle", "F")
+                     .gte("date", since).neq("status", "rejected").execute().data or [])
+            ideas = (store.table(db.IDEAS).select("angle,brief,status").eq("stream", "linkedin").eq("angle", "F")
+                     .in_("status", ["new", "working"]).execute().data or [])
+        except Exception as exc:  # noqa: BLE001
+            log.info("paper quota not read (%s)", str(exc)[:120])
+            return cls(0, {})
+        for r in posts:
+            if r.get("date"):
+                load[cls.week(str(r["date"]))] = load.get(cls.week(str(r["date"])), 0) + 1
+        for r in ideas:
+            pos = (r.get("brief") or {}).get("position") if isinstance(r.get("brief"), dict) else None
+            if isinstance(pos, dict) and pos.get("date"):
+                load[cls.week(str(pos["date"]))] = load.get(cls.week(str(pos["date"])), 0) + 1
+        return cls(per_week, load)
 
 
 def gaps(stream: str, brand: dict[str, Any], taken: set[tuple[str, str]], days: int,
@@ -583,11 +635,14 @@ def rank_candidates(pool: list[dict[str, Any]], now: datetime | None = None) -> 
 
 
 def pick(pool: list[dict[str, Any]], stream: str, allow: list[str] | None, day: str,
-         prefer: set[str] | None = None, only: list[str] | None = None) -> dict[str, Any] | None:
+         prefer: set[str] | None = None, only: list[str] | None = None,
+         papers: PaperQuota | None = None) -> dict[str, Any] | None:
     """An urgent file for THIS date first (Studio's `urgent post/DDMMYY` override), then the first item that fits. `prefer` (the
     focus topics, when this position is due one) keeps only the fitting items on those topics, if there are any."""
     if stream == "regulab" and only:
         pool = [x for x in pool if x.get("domain") in only]        # the list Wan limited ws.regulab's autofill to
+    if stream == "linkedin" and papers and not papers.ok(day):
+        pool = [x for x in pool if x.get("section") != "publication"]    # this week's paper is already written (27 Nov 2026)
     for x in pool:
         if (x.get("raw") or {}).get("urgent_for") == day:
             return x
@@ -747,7 +802,7 @@ def guideline_first(pool: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dict[str, set[tuple[str, str]]],
                pool: list[dict[str, Any]], cfg: dict[str, Any], now: datetime | None = None,
-               focus: Focus | None = None) -> tuple[int, int]:
+               focus: Focus | None = None, papers: PaperQuota | None = None) -> tuple[int, int]:
     """Top the drafts waiting for Wan up to `min_drafts`, looking as far ahead as `floor_days` (the 25 Nov 2026 floor). Returns
     (ideas written, still short). Streams take turns, nearest free position first, the rota and each stream's own pick order kept;
     a guideline or a new circular from a regulator is drawn first. A video slot is skipped (a film waits for Start, it is no
@@ -765,11 +820,13 @@ def fill_floor(store: Any, brand: dict[str, Any], streams: list[str], taken: dic
                 break
             while reach[stream]:
                 date, slot, allow = reach[stream].pop(0)
-                item = pick(pool, stream, allow, date, focus.prefer() if focus else None, cfg.get("regulab_only"))
+                item = pick(pool, stream, allow, date, focus.prefer() if focus else None, cfg.get("regulab_only"), papers)
                 if not item:
                     continue
                 pool = spend(pool, item)
                 write_idea(store, brand, stream, item, date, slot, allow)
+                if papers and stream == "linkedin" and item.get("section") == "publication":
+                    papers.take(date)
                 if focus:
                     focus.wrote(item)
                 taken.setdefault(stream, set()).add((date, slot))
@@ -818,6 +875,7 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
         pool = rank_candidates(candidates(store, now, cfg["news"], "faq" in cfg["focus"], cfg["unofficial"]), now)
         seen = {"pool": len(pool), "faq": sum(1 for x in pool if x.get("section") == "faq")}
         focus = Focus.load(store, cfg)
+        papers = PaperQuota.read(store, cfg["linkedin_papers"], now) if "linkedin" in streams else None
         brand = settings.get("brand") or {}
         made, empty, films = 0, 0, 0
         taken: dict[str, set[tuple[str, str]]] = {}
@@ -828,19 +886,21 @@ def run(store: Any, settings: dict[str, Any], now: datetime | None = None) -> st
             for date, slot, allow in gaps(stream, brand, busy, cfg["days_ahead"], now):
                 if made >= cfg["per_run"]:
                     break
-                item = pick(pool, stream, allow, date, focus.prefer(), cfg["regulab_only"])
+                item = pick(pool, stream, allow, date, focus.prefer(), cfg["regulab_only"], papers)
                 if not item:
                     empty += 1
                     continue
                 pool = spend(pool, item)
                 if write_idea(store, brand, stream, item, date, slot, allow):
                     films += 1
+                if papers and stream == "linkedin" and item.get("section") == "publication":
+                    papers.take(date)
                 focus.wrote(item)
                 busy.add((date, slot))
                 made += 1
         floored, short = 0, 0
         if cfg["min_drafts"]:
-            floored, short = fill_floor(store, brand, streams, taken, pool, cfg, now, focus)
+            floored, short = fill_floor(store, brand, streams, taken, pool, cfg, now, focus, papers)
         if not (made or floored) and (empty or short):
             note_once(store, "warn", "idea.autofill_idle",
                       f"Auto-isi: tiada idea ditulis (kolam {seen['pool']}, FAQ {seen['faq']}, slot tiada padanan {empty}, "

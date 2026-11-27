@@ -62,7 +62,7 @@ def test_handles_are_cleaned_and_a_name_registered_twice_or_with_no_known_platfo
     assert experts.clean_handle(" @a.b_c/ ") == "a.b_c" and experts.clean_handle("two words") == ""
 
 
-def test_a_sweep_keeps_the_experts_own_words_beside_the_summary_and_hides_what_is_off_the_niche():
+def test_a_sweep_keeps_the_experts_own_words_beside_the_summary_and_hides_nothing_that_is_off_the_niche():
     s = store()
     table = {("threads", "karpathy"): ([post("karpathy", "T1", "An agent needs narrow tools.\nHere is why.", likes=120),
                                         post("karpathy", "T2", "On holiday this week"),
@@ -70,12 +70,13 @@ def test_a_sweep_keeps_the_experts_own_words_beside_the_summary_and_hides_what_i
                                         post("karpathy", "OLD", "ancient", hours=24 * 40)], "")}
     rep = run(s, table=table)
     rows = {r["url"].rsplit("/", 1)[-1]: r for r in s.tables["semasa_watch"]}
-    assert set(rows) == {"T1", "T2"} and rep["shown"] == 1 and rep["hidden"] == 1 and rep["read"] == 2
+    assert set(rows) == {"T1", "T2"} and rep["shown"] == 2 and rep["hidden"] == 0 and rep["read"] == 2
     shown = rows["T1"]
     assert shown["section"] == "expert" and shown["relevant"] and shown["source"] == "Threads · @Karpathy"
     assert shown["raw"]["original"].startswith("An agent needs narrow tools.") and shown["raw"]["category"] == "ai"
     assert shown["raw"]["metrics"] == "120 likes" and shown["summary"].startswith("Pakar ini") and shown["title"]
-    assert rows["T2"]["relevant"] is False and rows["T2"]["summary"] is None
+    assert rows["T2"]["relevant"] is True and rows["T2"]["summary"] and rows["T2"]["raw"]["off_niche"] is True      # kept, flagged
+    assert "off_niche" not in shown["raw"]
     again = run(s, table=table)                                 # the second sweep reads the same posts and writes nothing new
     assert again["new"] == 0 and len(s.tables["semasa_watch"]) == 2
 
@@ -480,3 +481,21 @@ def test_the_community_part_of_a_sweep_does_not_read_an_account_an_expert_is_reg
                                                                    "youtube_error": "", "threads_error": ""}),
                now=NOW, only=["community"])
     assert "labmuffinbeautyscience" not in seen["instagram"] and "moskinlab" in seen["instagram"]
+
+
+class OffNicheWriter(Writer):
+    """Judges every post off the niche and gives no title or summary for it (what the real writer does for a personal post)."""
+
+    def chat_json(self, system, user, **_kw):
+        rows = [json.loads(x) for x in user.splitlines()[1:]]
+        return {"items": [{"i": r["i"], "relevant": False} for r in rows]}
+
+
+def test_a_post_the_writer_calls_off_the_niche_is_still_shown_with_its_own_words_and_never_filed_in_the_brain():
+    s = store()
+    table = {("threads", "karpathy"): ([post("karpathy", "T9", "On holiday in Langkawi this week.\nThe sea is warm.")], "")}
+    rep = run(s, table=table, llm=OffNicheWriter())
+    [row] = s.tables["semasa_watch"]
+    assert rep["shown"] == 1 and rep["hidden"] == 0 and row["relevant"] is True and row["dismissed"] is False
+    assert row["title"] == "On holiday in Langkawi this week." and row["summary"] == "On holiday in Langkawi this week. The sea is warm."
+    assert row["raw"]["off_niche"] is True and rep["brain"] == 0 and s.tables["semasa_brain_inbox"] == []     # the AI category files, this one not

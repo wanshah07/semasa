@@ -302,11 +302,13 @@ def metrics_of(p: dict[str, Any]) -> str | None:
 
 
 def annotate(llm: Any, posts: list[dict[str, Any]], batch: int = 5) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """(kept, rejected): the posts the writer answered. A post it never answered is in neither, and is tried again next sweep."""
+    """(kept, rejected): the posts the writer answered. A post it never answered is in neither, and is tried again next sweep.
+    NOTHING IS HIDDEN (Wan, 27 Nov 2026: "do not hide, use all idea from expert"): a post the writer judged off the niche is kept
+    like the rest, with the first line of the post as its title and the post's own words as its summary when the writer gave
+    none, and `off_niche` set so it is never filed in the AI brain. `rejected` stays in the signature and is always empty."""
     if not posts or not llm or not getattr(llm, "configured", False):
         return [], []
     kept: list[dict[str, Any]] = []
-    rejected: list[dict[str, Any]] = []
     misses = 0
     for start in range(0, len(posts), batch):
         if misses >= 2:
@@ -328,14 +330,16 @@ def annotate(llm: Any, posts: list[dict[str, Any]], batch: int = 5) -> tuple[lis
                 continue
             if not 0 <= i < len(chunk):
                 continue
-            if ans.get("relevant") not in (True, "true", "yes"):
-                rejected.append(chunk[i])
-                continue
+            on_niche = ans.get("relevant") in (True, "true", "yes")
             title, summary = str(ans.get("title") or "").strip(), str(ans.get("summary") or "").strip()
+            text = str(chunk[i].get("text") or "").strip()
+            if not on_niche:
+                title = title or (text.splitlines()[0] if text else "")
+                summary = summary or " ".join(text.split())
             if title and summary:
                 kept.append({**chunk[i], "title": title[:200], "summary": summary[:900],
-                             "why": str(ans.get("why") or "").strip()[:400]})
-    return kept, rejected
+                             "why": str(ans.get("why") or "").strip()[:400], **({} if on_niche else {"off_niche": True})})
+    return kept, []
 
 
 def to_row(p: dict[str, Any], brain: bool = False) -> dict[str, Any]:
@@ -344,7 +348,7 @@ def to_row(p: dict[str, Any], brain: bool = False) -> dict[str, Any]:
            "owner": p.get("owner") or p["handle"], "platform": p["platform"], "original": p["text"][:8000],
            **({"metrics": seen} if seen else {}),
            **({"parts": p["parts"], "chain_urls": p["chain_urls"]} if p.get("parts") else {}),
-           **({"brain": True} if brain else {})}
+           **({"brain": True} if brain else {}), **({"off_niche": True} if p.get("off_niche") else {})}
     return {"section": SECTION, "source": f"{NAMES[p['platform']]} · @{p['handle']}", "kind": p["category_name"], "country": None,
             "title": p["title"], "url": p["permalink"], "summary": p["summary"], "why": p.get("why") or None, "domain": None,
             "relevant": True, "lang": "ms", "summary_source": "llm", "raw": raw, "published_at": p["when"].isoformat(),
@@ -626,8 +630,10 @@ def sweep(store: Any, llm: Any, cfg: dict[str, Any], own: list[str], now: dateti
     known -= set(foreign)
     fresh = [p for p in posts if p["permalink"] not in known or (dry and p.get("healed"))]
     kept, rejected = annotate(llm, fresh)
-    filed = file_in_brain(store, kept, dry)
-    in_brain = {p["permalink"] for p in [k for k in kept if k.get("brain")][:MAX_BRAIN]} if filed else set()
+    # an off-niche post is shown but never filed in the AI brain as a reference (a personal post is no reference)
+    brainable = [k for k in kept if not k.get("off_niche")]
+    filed = file_in_brain(store, brainable, dry)
+    in_brain = {p["permalink"] for p in [k for k in brainable if k.get("brain")][:MAX_BRAIN]} if filed else set()
     rows = [to_row(p, p["permalink"] in in_brain) for p in kept] + [tombstone(p) for p in rejected]
     write(store, [r for r in rows if r["url"] not in foreign], dry)
     adopt(store, [r for r in rows if r["url"] in foreign], dry)

@@ -506,3 +506,95 @@ def test_the_limit_never_touches_linkedin():
     autofill.run(store, {"brand": BRAND, "autofill": {"enabled": True, "days_ahead": 7, "per_run": 2, "min_drafts": 0,
                                                        "streams": ["regulab", "linkedin"], "regulab_only": ["fatwa"]}}, NOW)
     assert all(i["stream"] == "linkedin" for i in store.tables["semasa_ideas"]) and store.tables["semasa_ideas"]
+
+
+# --- a paper a week on LinkedIn, and LinkedIn tells it as a story (Wan, 27 Nov 2026) -----------------------------------------
+
+TOPICS = ["niacinamide dan kulit berminyak", "retinol pada wanita hamil", "tabir suria mineral dan terumbu",
+          "kolagen oral dan kedutan", "probiotik topikal untuk ekzema"]
+
+
+def _paper(i):
+    return {**_w(i, "sains_kosmetik", "publication"), "title": f"Kajian {TOPICS[(i - 1) % len(TOPICS)]} diterbitkan Jurnal {i}"}
+
+
+def _li_settings(**extra):
+    return {"brand": {**BRAND, "linkedin": {"slots": ["06:00"], "days": [1, 3, 5]}},
+            "autofill": {"enabled": True, "days_ahead": 7, "per_run": 5, "min_drafts": 0, "streams": ["linkedin"], **extra}}
+
+
+def test_the_paper_quota_defaults_to_one_a_week_and_clamps():
+    assert autofill.config({})["linkedin_papers"] == 1
+    assert autofill.config({"autofill": {"linkedin_papers_per_week": 0}})["linkedin_papers"] == 0
+    assert autofill.config({"autofill": {"linkedin_papers_per_week": 3}})["linkedin_papers"] == 3
+    assert autofill.config({"autofill": {"linkedin_papers_per_week": 99}})["linkedin_papers"] == 7
+    assert autofill.config({"autofill": {"linkedin_papers_per_week": "many"}})["linkedin_papers"] == 1
+
+
+def test_a_week_is_counted_from_its_monday():
+    assert autofill.PaperQuota.week("2026-09-27") == "2026-09-21"           # a Sunday belongs to the week before it
+    assert autofill.PaperQuota.week("2026-09-28") == "2026-09-28"
+    assert autofill.PaperQuota.week("2026-10-02") == "2026-09-28"
+
+
+def test_linkedin_takes_one_paper_a_week_and_never_a_second_in_the_same_week():
+    store = _store([_paper(i) for i in range(1, 6)])
+    autofill.run(store, _li_settings(), NOW)
+    ideas = store.tables["semasa_ideas"]
+    dates = sorted(i["brief"]["position"]["date"] for i in ideas)
+    # Thu 24 Sep: Fri 25 is the week of 21 Sep; Mon 28 and Wed 30 are one week, so only one of those two gets a paper
+    assert dates == ["2026-09-25", "2026-09-28"] and all(i["angle"] == "F" for i in ideas)
+
+
+def test_a_paper_already_written_for_a_week_closes_that_week_whatever_its_status_but_not_a_rejected_one():
+    posts = [{"id": "p1", "stream": "linkedin", "status": "scheduled", "date": "2026-09-29", "slot": "06:00", "angle": "F"},
+             {"id": "p2", "stream": "linkedin", "status": "rejected", "date": "2026-09-25", "slot": "06:00", "angle": "F"}]
+    store = _store([_paper(i) for i in range(1, 6)], posts=posts)
+    autofill.run(store, _li_settings(), NOW)
+    dates = sorted(i["brief"]["position"]["date"] for i in store.tables["semasa_ideas"])
+    assert dates == ["2026-09-25"]            # 28 Sep's week is full (29 Sep paper); the rejected 25 Sep one holds nothing
+
+
+def test_a_paper_idea_still_being_written_counts_too():
+    waiting_idea = {"id": "i1", "stream": "linkedin", "status": "new", "angle": "F", "source_url": "https://x/1",
+                    "brief": {"position": {"date": "2026-09-25", "slot": "06:00"}}}
+    store = _store([_paper(i) for i in range(1, 6)], ideas=[waiting_idea])
+    autofill.run(store, _li_settings(), NOW)
+    new = [i for i in store.tables["semasa_ideas"] if i["id"] != "i1"]
+    assert sorted(i["brief"]["position"]["date"] for i in new) == ["2026-09-28"]
+
+
+def test_the_rest_of_the_week_goes_to_guidelines_and_circulars_and_zero_means_no_paper_at_all():
+    pool = [_paper(1), _paper(2), {**_w(7, "kosmetik"), "title": "Garis panduan terkini label kosmetik dikemas kini"}]
+    store = _store(pool)
+    autofill.run(store, _li_settings(), NOW)
+    angles = sorted(i["angle"] for i in store.tables["semasa_ideas"])
+    assert angles.count("F") == 1 and "A" in angles
+    none = _store([_paper(i) for i in range(1, 4)])
+    autofill.run(none, _li_settings(linkedin_papers_per_week=0), NOW)
+    assert none.tables["semasa_ideas"] == []
+
+
+def test_the_quota_never_touches_ws_regulab_and_a_failed_read_writes_no_paper():
+    store = _store([_paper(1)])
+    autofill.run(store, {"brand": BRAND, "autofill": {"enabled": True, "days_ahead": 3, "per_run": 5, "min_drafts": 0,
+                                                       "streams": ["regulab"]}}, NOW)
+    assert all(i["stream"] == "regulab" for i in store.tables["semasa_ideas"])
+
+    class Broken(FakeStore):
+        def table(self, name):
+            if name == "semasa_posts":
+                raise RuntimeError("down")
+            return super().table(name)
+    quota = autofill.PaperQuota.read(Broken(semasa_posts=[], semasa_ideas=[]), 1, NOW)
+    assert not quota.ok("2026-09-28")
+
+
+def test_linkedin_is_asked_to_tell_the_true_story_in_the_format_it_has_and_ws_regulab_is_not():
+    from semasa import ideas
+    brand = {"linkedin": {"angles": {}}}
+    li = ideas.build_request({"stream": "linkedin", "source_title": "t", "brief": {}}, {"ok": False}, brand)[1]
+    assert "tell it as a story" in li and "TRUE story" in li and "no invented client" in li
+    assert "numbered facts" in li and "the hashtags" in li                      # the format is named as unchanged
+    rg = ideas.build_request({"stream": "regulab", "source_title": "t", "brief": {"story_mode": True}}, {"ok": False}, {})[1]
+    assert "tell it as a story" not in rg and "STORY MODE" in rg

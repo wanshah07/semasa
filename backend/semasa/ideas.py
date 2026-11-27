@@ -586,6 +586,19 @@ def linkedin_news_gate(idea: dict[str, Any], source: dict[str, Any]) -> str:
             "headline is not (Wan, 20 Nov 2026). Add a note saying what you want from it to write it anyway.")
 
 
+# LinkedIn tells it as a story, in the format it has now (Wan, 27 Nov 2026: "for linkedn, change how the way do post ... make it
+# like tell story and format that we do now"). The numbered facts, the one-paragraph meaning, the citation and the hashtags are
+# the format and do not change; what is added is a short true story between the hook and the facts. Only what the SOURCE gives:
+# no invented client, case, conversation or person.
+LINKEDIN_STORY = (
+    "STORY (Wan, 27 Nov 2026: tell it as a story): after the hook, tell the TRUE story of the SOURCE in two to four short "
+    "sentences BEFORE the numbered facts, as a small sequence a reader can follow: who issued or found it and when, what "
+    "it was answering or what happened, and what changed on the shelf. For a paper: what the researchers asked, what they "
+    "did and what they found. Tell it from the SOURCE only: no invented client, case, conversation, person or date. The "
+    "format does not change: the hook, the story, the numbered facts with their exact detail, ONE short paragraph on what "
+    "it means, the citation, the hashtags. The story never replaces a fact and never repeats the hook.")
+
+
 def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str, Any],
                   avoid: str = "", writer: dict[str, Any] | None = None,
                   bank: hook_bank.Bank | None = None, hint: str = "", style_block: str = "") -> tuple[str, str]:
@@ -622,7 +635,9 @@ def build_request(idea: dict[str, Any], source: dict[str, Any], brand: dict[str,
         lines.append(f"HOOK, ATTEMPT {int(flags['hook_retry']) + 1}: your last answers did not open on one of the numbered "
                      "hook shapes. Pick ONE numbered shape from the list, copy its wording and change only its blanks, and put "
                      "its number in \"hook_shape\". Do not invent a new opening.")
-    if flags.get("story_mode"):
+    if stream == "linkedin":
+        lines.append(LINKEDIN_STORY)
+    elif flags.get("story_mode"):
         lines.append("STORY MODE: tell it as a small true story (who did what, what happened, what was found) in the casual "
                      "voice above, with the fact inside it. The fact is never dropped for the story.")
     if flags.get("hook_required"):

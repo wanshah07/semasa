@@ -243,7 +243,7 @@ function AutofillSettings({ settings, save, onToast }) {
       floor: String(a?.min_drafts ?? 2), reach: a?.floor_days,
       focus: Array.isArray(a?.focus) ? a.focus : ["drgd", "fsqd", "faq"], every: String(a?.focus_every || 3), unofficial: a?.unofficial !== false,
       streams: Array.isArray(a?.streams) ? a.streams : ["regulab", "linkedin"], news: a?.news === true,
-      regulabOnly: Array.isArray(a?.regulab_only) ? a.regulab_only : [] });
+      regulabOnly: Array.isArray(a?.regulab_only) ? a.regulab_only : [], papers: String(a?.linkedin_papers_per_week ?? 1) });
   }, [JSON.stringify(a)]); // eslint-disable-line react-hooks/exhaustive-deps -- a change elsewhere must not wipe an edit here
   if (!f) return null;
   const toggleFocus = (k) => setF((x) => ({ ...x, focus: x.focus.includes(k) ? x.focus.filter((y) => y !== k) : [...x.focus, k] }));
@@ -253,7 +253,7 @@ function AutofillSettings({ settings, save, onToast }) {
     setBusy(true);
     try {
       await save("autofill", { enabled: f.enabled, days_ahead: Number(f.days), per_run: Number(f.per), min_drafts: Number(f.floor), focus: f.focus, focus_every: Number(f.every), unofficial: f.unofficial,
-        ...(f.reach ? { floor_days: Number(f.reach) } : {}), streams: f.streams, news: f.news, regulab_only: f.regulabOnly });
+        ...(f.reach ? { floor_days: Number(f.reach) } : {}), streams: f.streams, news: f.news, regulab_only: f.regulabOnly, linkedin_papers_per_week: Number(f.papers) });
       onToast(f.enabled ? t("Auto-isi dihidupkan. Larian Semasa seterusnya menulis idea untuk slot kosong; semuanya draf.",
         "Autofill is on. The next Semasa run writes ideas for empty slots; all of them stay drafts.")
         : t("Auto-isi dimatikan.", "Autofill is off."), "ok");
@@ -288,6 +288,9 @@ function AutofillSettings({ settings, save, onToast }) {
           ))}
         </span>
       </div>
+      <label className="mt-3 flex items-center gap-2 text-sm">{t("LinkedIn: paling banyak kertas kajian baharu seminggu", "LinkedIn: at most new research papers a week")}
+        <Select value={f.papers} onChange={(v) => setF((x) => ({ ...x, papers: v }))} options={[0, 1, 2, 3].map((n) => [String(n), n === 0 ? t("Tiada", "None") : String(n)])} /></label>
+      <p className="mt-1 text-[12px] text-muted">{t("Selebihnya minggu itu ditulis daripada garis panduan, pekeliling dan laman rasmi. Idea yang anda tulis sendiri tidak dihadkan.", "The rest of the week is written from guidelines, circulars and official pages. Ideas you write yourself are never limited.")}</p>
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input type="checkbox" checked={f.regulabOnly.includes("fatwa")}
           onChange={(e) => setF((x) => ({ ...x, regulabOnly: e.target.checked ? ["fatwa"] : [] }))} />

@@ -486,6 +486,12 @@ def ask_longer(have: int, floor: int, stream: str) -> str:
             "what it means in practice, numbered \"1. ... 2. ...\", each one complete. Add nothing the SOURCE does not say.")
 
 
+ASK_CITATION = ("\n\nYOUR LAST ANSWER HAD NO CITATION. Write the whole answer again in the same JSON, the same hook shape, "
+                "and add the \"citation\": the regulator and the instrument the SOURCE stands on (for example "
+                "\"NPRA, Guidelines for Control of Cosmetic Products in Malaysia\"), never a news portal, blog or social "
+                "platform. The citation is printed on the artwork's source line.")
+
+
 def format_of(idea: dict[str, Any]) -> str:
     """What the idea should become besides its caption: 'carousel' (slides, the default), 'poster' / 'card' (ONE artwork, only
     when Wan chooses it) or 'comic' (a four-panel dialogue comic as the post's one picture). There is no AI-picture-only post any
@@ -1079,6 +1085,17 @@ def process_idea(store: Any, llm: LLM, idea: dict[str, Any], settings: dict[str,
         raise IdeaError(f"the writer did not build the hook on one of {which} (asked twice): press Cuba lagi")
     out, shape = english_only(llm, system, user, out, shape, stream, family, bank,
                               5000 if (want_slides or want_poster) else 3500)
+    if not str(out.get("citation") or "").strip():
+        # the citation is printed on the artwork's source line (rule 8 of the writer's brief): a post never leaves
+        # without one. One more ask, then the idea fails with a reason, like a hook with no shape. It sits after
+        # english_only so the language recovery can never drop the citation it came in with.
+        again = llm.chat_json(system, user + ASK_CITATION,
+                              max_tokens=5000 if (want_slides or want_poster) else 3500)
+        if isinstance(again, dict) and again.get("fit") is not False and str(again.get("citation") or "").strip() \
+                and hook_bank.declared(again, stream, family, bank):
+            out = again
+    if not str(out.get("citation") or "").strip():
+        raise IdeaError("the writer returned no citation (asked twice): press Cuba lagi")
     text = normalise_text(out.get("text"), stream, lang)
     if not text.get(lang):
         raise IdeaError(f"the writer returned no {lang.upper()} caption")

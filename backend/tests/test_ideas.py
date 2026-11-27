@@ -83,6 +83,18 @@ class FakeLLM(LLM):
         return self.answer
 
 
+class Seq(LLM):
+    """Answers each ask with the next answer in the list (the last one repeats), and remembers what it was asked."""
+
+    def __init__(self, *answers):
+        super().__init__(LLMSettings(provider="openai", api_key="k", base_url="https://x/v1", model="m", timeout=5))
+        self.answers, self.seen = list(answers), []
+
+    def chat_json(self, system, user, **kw):
+        self.seen.append((system, user))
+        return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+
+
 def _store():
     return FakeStore(semasa_settings=[{"key": "brand", "value": BRAND}, {"key": "publishing", "value": {"enabled": False}}],
                      semasa_posts=[], media_generations=[], semasa_ideas=[])
@@ -118,6 +130,40 @@ def test_unfit_idea_and_missing_key_are_errors_with_a_reason(monkeypatch):
     nokey.s = LLMSettings(provider="openai", api_key=None, base_url="https://x/v1", model="m", timeout=5)
     with pytest.raises(ideas.IdeaError, match="LLM_API_KEY"):
         ideas.process_idea(store, nokey, {"id": "i", "stream": "regulab"}, {})
+
+
+def test_a_missing_citation_is_asked_again_once(monkeypatch):
+    from semasa import rotation
+    monkeypatch.setattr(rotation, "turn_for", lambda *a, **k: rotation.Turn())   # the turn has its own tests
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "x", "image": None})
+    store = _store()
+    cap = "Notifikasi kosmetik bukan kelulusan. Produk ini dijamin lulus NPRA."
+    good = {"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik",
+            "citation": "NPRA, Buku Panduan Pendaftaran Produk Kosmetik",
+            "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}}
+    llm = Seq({**good, "citation": ""}, good)
+    idea = {"id": "ic1", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none"}
+    store.tables["semasa_ideas"].append({**idea, "status": "working"})
+    pid = ideas.process_idea(store, llm, idea, ideas.load_settings(store))
+    post = store.tables["semasa_posts"][0]
+    assert post["citation"] == "NPRA, Buku Panduan Pendaftaran Produk Kosmetik"
+    assert "citation" in llm.seen[1][1] and "NPRA" in llm.seen[1][1]   # the second ask names what is missing
+
+
+def test_a_citation_still_missing_after_the_re_ask_fails_with_a_reason(monkeypatch):
+    from semasa import rotation
+    monkeypatch.setattr(rotation, "turn_for", lambda *a, **k: rotation.Turn())   # the turn has its own tests
+    monkeypatch.setattr(ideas, "read_source", lambda url: {"ok": False, "why": "x", "image": None})
+    store = _store()
+    cap = "Notifikasi kosmetik bukan kelulusan. Produk ini dijamin lulus NPRA."
+    nocite = {"fit": True, "hook": "h", "hook_shape": 21, "domain": "kosmetik", "citation": "",
+              "text": {"bm": {"instagram": cap, "facebook": cap, "threads": cap}}}
+    llm = Seq(nocite, nocite)
+    idea = {"id": "ic2", "stream": "regulab", "source_title": "T", "created_by": "u", "make_media": "none"}
+    store.tables["semasa_ideas"].append({**idea, "status": "working"})
+    with pytest.raises(ideas.IdeaError, match="citation"):
+        ideas.process_idea(store, llm, idea, ideas.load_settings(store))
+    assert "citation" in llm.seen[1][1]                        # one re-ask, then the failure
 
 
 def test_run_records_errors_on_the_idea_and_claims_once(monkeypatch):
